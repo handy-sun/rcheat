@@ -2,6 +2,9 @@
 name = "rcheat"
 version = "0.0.1"
 edition = "2018"
+authors = ["handy-sun <handy-sun@foxmail.com>"]
+description = "Read and write data to another process by using ptrace"
+license = "MIT"
 
 [dependencies]
 nix = { version = "^0", features = ["ptrace"] }
