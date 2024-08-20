@@ -3,9 +3,17 @@ name = "rcheat"
 version = "0.0.1"
 edition = "2018"
 authors = ["handy-sun <handy-sun@foxmail.com>"]
-description = "Read and write data to another process by using ptrace"
+description = "Intercept a run process and cheat its memory"
 license = "MIT"
+build = "build.rs"
 
 [dependencies]
 chrono = "^0.4"
-nix = { version = "^0.29", features = ["ptrace"] }
+nix = { version = "^0.29", features = ["ptrace", "fs"] }
+clap = { version = "^4", features = ["derive", "wrap_help"] }
+shadow-rs = "^0"
+anyhow = "1"
+bytes = "^1.7"
+
+[build-dependencies]
+shadow-rs = "^0"
