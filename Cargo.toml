@@ -3,7 +3,7 @@ name = "rcheat"
 version = "0.0.1"
 edition = "2018"
 authors = ["handy-sun <handy-sun@foxmail.com>"]
-description = "Intercept a run process and cheat its memory"
+description = "Cheat a running linux process' memory"
 license = "MIT"
 build = "build.rs"
 

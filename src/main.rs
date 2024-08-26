@@ -1,18 +1,15 @@
 mod ctrl;
 
-use nix::libc::pid_t;
-use clap::Parser;
 use anyhow::{anyhow, Error};
+use clap::Parser;
+use nix::libc::pid_t;
 
 use shadow_rs::shadow;
 
 use crate::ctrl::trace;
 
 #[derive(Clone, Debug, Parser)]
-#[clap(
-    name = "rcheat",
-    about = "rcheat - Intercept a run process and cheat its memory",
-)]
+#[clap(name = "rcheat", about = "rcheat - Cheat a running linux process' memory")]
 pub struct Args {
     #[clap(short = 'v', long = "version")]
     version: bool,
@@ -26,7 +23,11 @@ fn run_main(arg: Args) -> Result<(), Error> {
     shadow!(build);
 
     if arg.version {
-        println!("version: {}", build::CLAP_LONG_VERSION);
+        println!("version:     {}", build::PKG_VERSION);
+        println!("branch:      {} (git_clean: {})", build::BRANCH, build::GIT_CLEAN);
+        println!("commit_hash: {}", build::SHORT_COMMIT);
+        println!("build_time:  {}", build::BUILD_TIME);
+        println!("build_env:   {}, {}", build::RUST_VERSION, build::RUST_CHANNEL);
         return Ok(());
     }
 

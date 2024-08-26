@@ -1,21 +1,20 @@
 use crate::Args;
 
-use std::{mem, time::Instant};
+use std::ffi::OsString;
 use std::path::Path;
 use std::result::Result::Ok;
-use std::ffi::OsString;
+use std::{mem, time::Instant};
 
 use chrono::Local;
 
+use anyhow::{anyhow, Error};
+use nix::fcntl::readlink;
 use nix::libc::{c_long, c_void, pid_t};
 use nix::sys::ptrace;
 use nix::sys::wait;
 use nix::unistd::Pid;
-use nix::fcntl::readlink;
-use anyhow::{anyhow, Error};
 
 use bytes::{Buf, BufMut, BytesMut};
-
 
 fn pass_or_exit(ret: &nix::Result<()>, msg: &str) -> Result<(), Error> {
     match ret {
@@ -32,7 +31,7 @@ fn get_abs_path(pid: pid_t) -> Result<OsString, Error> {
     let path = Path::new(&proc_exe);
     match readlink(path) {
         Ok(link) => Ok(link),
-        Err(e) => Err(anyhow!("readlink failed: {:?}", e))
+        Err(e) => Err(anyhow!("readlink failed: {:?}", e)),
     }
 }
 
@@ -69,7 +68,7 @@ pub fn trace(arg: Args) -> Result<(), Error> {
             Ok(long_data) => {
                 peek_buf.put_i64_le(long_data);
                 // peek_buf.put::<c_long>(long_data); // TODO
-            },
+            }
             Err(e) => {
                 return Err(anyhow!("ptrace peekdata failed: {:?}", e));
             }
