@@ -1,16 +1,19 @@
 use crate::Args;
 
-use std::ffi::OsString;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::result::Result::Ok;
 use std::{mem, time::Instant};
 
 use chrono::Local;
 
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
+
 use nix::fcntl::readlink;
 use nix::libc::{c_long, c_void, pid_t};
 use nix::sys::ptrace;
+use nix::sys::signal::Signal::SIGCONT;
 use nix::sys::wait;
 use nix::unistd::Pid;
 
@@ -19,35 +22,73 @@ use bytes::{Buf, BufMut, BytesMut};
 fn pass_or_exit(ret: &nix::Result<()>, msg: &str) -> Result<(), Error> {
     match ret {
         Ok(_) => Ok(()),
-        Err(e) => {
+        Err(errno) => {
             let os_err = std::io::Error::last_os_error();
-            Err(anyhow!("{} failed: {:?}, {:?}", msg, e, os_err))
+            Err(anyhow!("{} failed: {:?}, {:?}", msg, errno, os_err))
         }
     }
 }
 
-fn get_abs_path(pid: pid_t) -> Result<OsString, Error> {
+fn get_abs_path(pid: pid_t) -> Result<String, Error> {
     let proc_exe = format!("/proc/{}/exe", pid);
     let path = Path::new(&proc_exe);
     match readlink(path) {
-        Ok(link) => Ok(link),
-        Err(e) => Err(anyhow!("readlink failed: {:?}", e)),
+        Ok(os_link) => match os_link.into_string() {
+            Ok(string) => Ok(string),
+            Err(os_str) => Err(anyhow!("OsString:{:?} to String failed", os_str)),
+        },
+        Err(errno) => Err(anyhow!("readlink failed: {:?}", errno)),
     }
 }
 
-// TODO
-// fn get_base_addr(pid: pid_t) -> Result<u64, Error> {
-//     let proc_maps = format!("/proc/{}/maps", pid);
-//     let _bytes = std::fs::read(&proc_maps)
-//         .map_err(|err|anyhow!("Problem reading file {:?}: {}", proc_maps, err))?;
-//     return Ok(0);
-// }
+fn get_base_addr(pid: pid_t, exe_path: &String) -> Result<u64, Error> {
+    let proc_maps = format!("/proc/{}/maps", pid);
+    let path = Path::new(&proc_maps);
+
+    let file = File::open(path).map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
+
+    let file_reader = BufReader::new(file);
+    for line_res in file_reader.lines() {
+        let line = line_res.context("not")?;
+        let cols: Vec<_> = line.split_whitespace().collect();
+        if cols.len() < 6 {
+            continue;
+        }
+
+        if cols.get(2) == Some(&"00000000") && cols.get(5) == Some(&exe_path.as_str()) {
+            let col_0 = cols.get(0).ok_or_else(|| anyhow!("Column 0 is missing"))?;
+
+            match col_0.find('-') {
+                Some(pos) => {
+                    let hex_str = &col_0[0..pos];
+                    return u64::from_str_radix(hex_str, 16)
+                        .map_err(|_| anyhow!("Failed to parse hex string: {}", hex_str));
+                }
+                None => return Err(anyhow!("Column 0 must contains '-'")),
+            }
+        }
+    }
+
+    Err(anyhow!("The maps file don't contain the base address"))
+}
+
+fn restore_process_to_run(pid: Pid, err: Error) -> Result<(), Error> {
+    pass_or_exit(&ptrace::cont(pid, SIGCONT), "ptrace cont(SIGCONT")?;
+    // pass_or_exit(&ptrace::detach(pid, SIGCONT), "ptrace detach")?; try it
+    Err(err)
+}
 
 pub fn trace(arg: Args) -> Result<(), Error> {
     let pid = Pid::from_raw(arg.raw_pid);
 
     let start = Instant::now();
-    println!("{:?}", get_abs_path(arg.raw_pid));
+    let exe_path = get_abs_path(arg.raw_pid)?;
+
+    println!("exe_path: {}", exe_path);
+    println!("address: {}", arg.address);
+
+    let dec = get_base_addr(arg.raw_pid, &exe_path)?;
+    println!("get_base_addr: {:#x} ({})", dec, dec);
     pass_or_exit(&ptrace::attach(pid), "ptrace attach")?;
 
     match wait::waitpid(pid, None) {
@@ -55,7 +96,7 @@ pub fn trace(arg: Args) -> Result<(), Error> {
             println!("waitpid succeeded, status: {:?}", _status);
         }
         Err(e) => {
-            return Err(anyhow!("waitpid failed: {:?}", e));
+            return restore_process_to_run(pid, anyhow!("waitpid failed: {:?}", e));
         }
     }
     let val = arg.address.parse::<i64>().unwrap();
@@ -69,8 +110,8 @@ pub fn trace(arg: Args) -> Result<(), Error> {
                 peek_buf.put_i64_le(long_data);
                 // peek_buf.put::<c_long>(long_data); // TODO
             }
-            Err(e) => {
-                return Err(anyhow!("ptrace peekdata failed: {:?}", e));
+            Err(errno) => {
+                return restore_process_to_run(pid, anyhow!("ptrace peekdata failed: {:?}", errno));
             }
         }
     }
