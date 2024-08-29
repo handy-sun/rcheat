@@ -1,3 +1,4 @@
+use crate::AnyError;
 use crate::Args;
 
 use std::fs::File;
@@ -19,7 +20,7 @@ use nix::unistd::Pid;
 
 use bytes::{Buf, BufMut, BytesMut};
 
-fn pass_or_exit(ret: &nix::Result<()>, msg: &str) -> Result<(), Error> {
+fn pass_or_exit(ret: &nix::Result<()>, msg: &str) -> AnyError {
     match ret {
         Ok(_) => Ok(()),
         Err(errno) => {
@@ -29,8 +30,8 @@ fn pass_or_exit(ret: &nix::Result<()>, msg: &str) -> Result<(), Error> {
     }
 }
 
-fn get_abs_path(pid: pid_t) -> Result<String, Error> {
-    let proc_exe = format!("/proc/{}/exe", pid);
+fn get_abs_path(tracked_pid: pid_t) -> Result<String, Error> {
+    let proc_exe = format!("/proc/{}/exe", tracked_pid);
     let path = Path::new(&proc_exe);
     match readlink(path) {
         Ok(os_link) => match os_link.into_string() {
@@ -41,21 +42,15 @@ fn get_abs_path(pid: pid_t) -> Result<String, Error> {
     }
 }
 
-fn get_base_addr(pid: pid_t, exe_path: &String) -> Result<u64, Error> {
-    let proc_maps = format!("/proc/{}/maps", pid);
-    let path = Path::new(&proc_maps);
-
-    let file = File::open(path).map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
-
-    let file_reader = BufReader::new(file);
-    for line_res in file_reader.lines() {
+fn get_base_addr<R: BufRead>(buf_read: R, exe_path: &str) -> Result<u64, Error> {
+    for line_res in buf_read.lines() {
         let line = line_res.context("not")?;
         let cols: Vec<_> = line.split_whitespace().collect();
         if cols.len() < 6 {
             continue;
         }
 
-        if cols.get(2) == Some(&"00000000") && cols.get(5) == Some(&exe_path.as_str()) {
+        if cols.get(2) == Some(&"00000000") && cols.get(5) == Some(&exe_path) {
             let col_0 = cols.get(0).ok_or_else(|| anyhow!("Column 0 is missing"))?;
 
             match col_0.find('-') {
@@ -72,51 +67,72 @@ fn get_base_addr(pid: pid_t, exe_path: &String) -> Result<u64, Error> {
     Err(anyhow!("The maps file don't contain the base address"))
 }
 
-fn restore_process_to_run(pid: Pid, err: Error) -> Result<(), Error> {
-    pass_or_exit(&ptrace::cont(pid, SIGCONT), "ptrace cont(SIGCONT")?;
-    // pass_or_exit(&ptrace::detach(pid, SIGCONT), "ptrace detach")?; try it
+fn restore_process_to_run(tracked_pid: Pid, err: Error) -> AnyError {
+    pass_or_exit(&ptrace::cont(tracked_pid, SIGCONT), "ptrace_cont(SIGCONT)")?;
+    // pass_or_exit(&ptrace::detach(tracked_pid, SIGCONT), "ptrace_detach(SIGCONT)")?;
     Err(err)
 }
 
-pub fn trace(arg: Args) -> Result<(), Error> {
-    let pid = Pid::from_raw(arg.raw_pid);
+fn parse_various_input(indef: &String) -> Result<u64, Error> {
+    let dec;
+    if indef.to_lowercase().starts_with("0x") {
+        let no_pre = &indef[2..];
+        dec = u64::from_str_radix(no_pre, 16)
+            .map_err(|_| anyhow!("Failed to parse hex string: {}", indef))?;
+    } else {
+        dec = indef
+            .parse::<u64>()
+            .map_err(|err| anyhow!("Parse to u64 failed: {:?}", err))?;
+    }
+    Ok(dec)
+}
+
+pub fn trace(arg: Args) -> AnyError {
+    let addr_dec = parse_various_input(&arg.address)?;
+    let tracked_pid = Pid::from_raw(arg.pid);
 
     let start = Instant::now();
-    let exe_path = get_abs_path(arg.raw_pid)?;
+    let exe_path = get_abs_path(arg.pid)?;
 
     println!("exe_path: {}", exe_path);
-    println!("address: {}", arg.address);
+    println!("address: {:#x} ({})", addr_dec, addr_dec);
 
-    let dec = get_base_addr(arg.raw_pid, &exe_path)?;
-    println!("get_base_addr: {:#x} ({})", dec, dec);
-    pass_or_exit(&ptrace::attach(pid), "ptrace attach")?;
+    let proc_maps = format!("/proc/{}/maps", tracked_pid);
+    let file = File::open(Path::new(&proc_maps))
+        .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
 
-    match wait::waitpid(pid, None) {
+    let file_reader = BufReader::new(file);
+    let addr_val = get_base_addr(file_reader, &exe_path.as_str())?;
+    println!("base_addr: {:#x} ({})", addr_val, addr_val);
+
+    pass_or_exit(&ptrace::attach(tracked_pid), "ptrace_attach")?;
+
+    match wait::waitpid(tracked_pid, None) {
         Ok(_status) => {
             println!("waitpid succeeded, status: {:?}", _status);
         }
         Err(e) => {
-            return restore_process_to_run(pid, anyhow!("waitpid failed: {:?}", e));
+            return restore_process_to_run(tracked_pid, anyhow!("waitpid failed: {:?}", e));
         }
     }
-    let val = arg.address.parse::<i64>().unwrap();
-    let addr = ptrace::AddressType::from(val as *mut c_void);
+
+    let addr = ptrace::AddressType::from(addr_dec as *mut c_void);
     const COUNT: usize = 10; // TEST
     let mut peek_buf = BytesMut::with_capacity(COUNT * mem::size_of::<c_long>());
 
     for i in 0..COUNT {
-        match ptrace::read(pid, addr.wrapping_add(i * mem::size_of::<c_long>())) {
+        match ptrace::read(tracked_pid, addr.wrapping_add(i * mem::size_of::<c_long>())) {
             Ok(long_data) => {
                 peek_buf.put_i64_le(long_data);
-                // peek_buf.put::<c_long>(long_data); // TODO
+                // peek_buf.put::<c_long>(long_data); // TODO?
             }
             Err(errno) => {
-                return restore_process_to_run(pid, anyhow!("ptrace peekdata failed: {:?}", errno));
+                return restore_process_to_run(tracked_pid, anyhow!("peekdata at {:?}: {:?}", addr, errno));
             }
         }
     }
 
-    pass_or_exit(&ptrace::detach(pid, None), "ptrace detach")?;
+    pass_or_exit(&ptrace::detach(tracked_pid, None), "ptrace_detach")?;
 
     let duration = start.elapsed();
     println!("Time elapsed: {:?}", duration);
@@ -135,4 +151,28 @@ pub fn trace(arg: Args) -> Result<(), Error> {
     }
     println!("{}", Local::now().format("%Y-%m-%d %H:%M:%S"));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn _get_base_addr() {
+        let exe_abs_path = "/usr/bin/test1";
+        let contents = "
+00400000-004ac000 r-xp 00000000 08:02 8918620   /usr/bin/test1
+006ab000-006ac000 r--p 000ab000 08:02 8918620   /usr/bin/test1
+006ac000-006b2000 rw-p 000ac000 08:02 8918620   /usr/bin/test1
+0092f000-00a9b000 rw-p 00000000 00:00 0         [heap]";
+        let buf_rdr = BufReader::new(contents.as_bytes());
+        assert_eq!(get_base_addr(buf_rdr, &exe_abs_path).unwrap_or_default(), 0x400000);
+
+        let exe_abs_path = "/usr/bin/test2";
+        let contents = "
+7fc5f7864000-7fc5f7874000 r-xp 00000000 08:02 8918670 /usr/lib64/libtest
+7fc5f7874000-7fc5f7a73000 ---p 00010000 08:02 8918670 /usr/lib64/libtest";
+        let buf_rdr = BufReader::new(contents.as_bytes());
+        assert_eq!(get_base_addr(buf_rdr, &exe_abs_path).unwrap_or_default(), 0);
+    }
 }
