@@ -1,5 +1,6 @@
 use crate::AnyError;
 use crate::Args;
+use crate::load_elf::run_parse;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -19,6 +20,7 @@ use nix::sys::wait;
 use nix::unistd::Pid;
 
 use bytes::{Buf, BufMut, BytesMut};
+
 
 fn pass_or_exit(ret: &nix::Result<()>, msg: &str) -> AnyError {
     match ret {
@@ -100,6 +102,16 @@ pub fn trace(arg: Args) -> AnyError {
     let proc_maps = format!("/proc/{}/maps", tracked_pid);
     let file = File::open(Path::new(&proc_maps))
         .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
+    
+    // match lazy_load_elf(exe_path.as_str()) {
+    //     Ok(_) => Ok(_),
+    //     Err(_e) => println!("{:?}", _e)
+    // }
+
+    // if let _ = lazy_load_elf(exe_path.as_str()) {
+    if let Ok(_) = run_parse(exe_path.as_str()) {
+        return Ok(());
+    }
 
     let file_reader = BufReader::new(file);
     let addr_val = get_base_addr(file_reader, &exe_path.as_str())?;

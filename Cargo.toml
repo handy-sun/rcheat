@@ -1,6 +1,6 @@
 [package]
 name = "rcheat"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2018"
 authors = ["handy-sun <handy-sun@foxmail.com>"]
 description = "Cheat a running linux process' memory"
@@ -14,6 +14,7 @@ clap = { version = "^4", features = ["derive", "wrap_help"] }
 shadow-rs = "^0"
 anyhow = "1"
 bytes = "^1.7"
+goblin = "^0"
 
 [build-dependencies]
 shadow-rs = "^0"

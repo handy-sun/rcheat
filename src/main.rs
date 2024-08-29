@@ -1,4 +1,5 @@
 mod ctrl;
+mod load_elf;
 
 use anyhow::{anyhow, Error};
 use clap::Parser;
