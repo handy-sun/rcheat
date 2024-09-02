@@ -28,6 +28,9 @@ pub struct Args {
     /// Address of global var
     #[arg(short = 'a', long = "address", default_value = "")]
     address: String,
+    /// Keyword of the variable which want to search
+    #[arg(short, long, default_value = "", conflicts_with = "address")]
+    keyword: String,
 }
 
 fn run_main(arg: Args) -> AnyError {
@@ -47,8 +50,8 @@ fn run_main(arg: Args) -> AnyError {
         return Err(anyhow!("pid: {} is illegal!", arg.pid));
     }
 
-    if arg.address.is_empty() {
-        return Err(anyhow!("address is empty!"));
+    if arg.address.is_empty() && arg.keyword.is_empty() {
+        return Err(anyhow!("address and keyword must input one!"));
     }
 
     trace(arg)

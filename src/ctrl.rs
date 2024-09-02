@@ -1,6 +1,6 @@
+use crate::load_elf::match_sym_entry;
 use crate::AnyError;
 use crate::Args;
-use crate::load_elf::run_parse;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -19,8 +19,11 @@ use nix::sys::signal::Signal::SIGCONT;
 use nix::sys::wait;
 use nix::unistd::Pid;
 
+use goblin::elf::header;
+
 use bytes::{Buf, BufMut, BytesMut};
 
+const LONG_SIZE: usize = mem::size_of::<c_long>();
 
 fn pass_or_exit(ret: &nix::Result<()>, msg: &str) -> AnyError {
     match ret {
@@ -79,8 +82,8 @@ fn parse_various_input(indef: &String) -> Result<u64, Error> {
     let dec;
     if indef.to_lowercase().starts_with("0x") {
         let no_pre = &indef[2..];
-        dec = u64::from_str_radix(no_pre, 16)
-            .map_err(|_| anyhow!("Failed to parse hex string: {}", indef))?;
+        dec =
+            u64::from_str_radix(no_pre, 16).map_err(|_| anyhow!("Failed to parse hex string: {}", indef))?;
     } else {
         dec = indef
             .parse::<u64>()
@@ -90,33 +93,38 @@ fn parse_various_input(indef: &String) -> Result<u64, Error> {
 }
 
 pub fn trace(arg: Args) -> AnyError {
-    let addr_dec = parse_various_input(&arg.address)?;
     let tracked_pid = Pid::from_raw(arg.pid);
+    let exe_path = get_abs_path(arg.pid)?;
+    println!("exe_path: {}", &exe_path);
+
+    let elf_bytes =
+        std::fs::read(&exe_path).map_err(|err| anyhow!("Problem reading file {:?}: {}", &exe_path, err))?;
+
+    let entry_addr;
+    let entry_size;
+    if !arg.keyword.is_empty() {
+        let elf_data = match_sym_entry(&elf_bytes, &arg.keyword)?;
+        entry_size = elf_data.1;
+        match elf_data.2 {
+            header::ET_EXEC => entry_addr = elf_data.0,
+            header::ET_DYN => {
+                let proc_maps = format!("/proc/{}/maps", tracked_pid);
+                let file = File::open(Path::new(&proc_maps))
+                    .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
+                let file_reader = BufReader::new(file);
+                let base_addr = get_base_addr(file_reader, &exe_path.as_str())?;
+                println!("base_addr: {:#x} ({})", base_addr, base_addr);
+                entry_addr = base_addr + elf_data.0;
+            }
+            _ => return Err(anyhow!("Unsupport e_type: {}", elf_data.2)),
+        }
+    } else {
+        entry_addr = parse_various_input(&arg.address)?;
+        entry_size = 16;
+    }
+    println!("entry address: {:#x}, size: {}", entry_addr, entry_size);
 
     let start = Instant::now();
-    let exe_path = get_abs_path(arg.pid)?;
-
-    println!("exe_path: {}", exe_path);
-    println!("address: {:#x} ({})", addr_dec, addr_dec);
-
-    let proc_maps = format!("/proc/{}/maps", tracked_pid);
-    let file = File::open(Path::new(&proc_maps))
-        .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
-    
-    // match lazy_load_elf(exe_path.as_str()) {
-    //     Ok(_) => Ok(_),
-    //     Err(_e) => println!("{:?}", _e)
-    // }
-
-    // if let _ = lazy_load_elf(exe_path.as_str()) {
-    if let Ok(_) = run_parse(exe_path.as_str()) {
-        return Ok(());
-    }
-
-    let file_reader = BufReader::new(file);
-    let addr_val = get_base_addr(file_reader, &exe_path.as_str())?;
-    println!("base_addr: {:#x} ({})", addr_val, addr_val);
-
     pass_or_exit(&ptrace::attach(tracked_pid), "ptrace_attach")?;
 
     match wait::waitpid(tracked_pid, None) {
@@ -128,12 +136,19 @@ pub fn trace(arg: Args) -> AnyError {
         }
     }
 
-    let addr = ptrace::AddressType::from(addr_dec as *mut c_void);
-    const COUNT: usize = 10; // TEST
-    let mut peek_buf = BytesMut::with_capacity(COUNT * mem::size_of::<c_long>());
+    let addr = ptrace::AddressType::from(entry_addr as *mut c_void);
+    let var_sz = entry_size as usize;
+    let mut peek_buf = BytesMut::with_capacity(var_sz);
 
-    for i in 0..COUNT {
-        match ptrace::read(tracked_pid, addr.wrapping_add(i * mem::size_of::<c_long>())) {
+    let mut pos: usize = 0;
+    while pos < var_sz {
+        if pos + LONG_SIZE > var_sz {
+            print!("before pos: {}, ", pos);
+            pos = var_sz - LONG_SIZE;
+            peek_buf.truncate(pos);
+            println!("now pos: {}", pos);
+        }
+        match ptrace::read(tracked_pid, addr.wrapping_add(pos)) {
             Ok(long_data) => {
                 peek_buf.put_i64_le(long_data);
                 // peek_buf.put::<c_long>(long_data); // TODO?
@@ -142,6 +157,7 @@ pub fn trace(arg: Args) -> AnyError {
                 return restore_process_to_run(tracked_pid, anyhow!("peekdata at {:?}: {:?}", addr, errno));
             }
         }
+        pos += LONG_SIZE;
     }
 
     pass_or_exit(&ptrace::detach(tracked_pid, None), "ptrace_detach")?;
@@ -152,13 +168,16 @@ pub fn trace(arg: Args) -> AnyError {
     // println!("{:?}", peek_buf);
     let mut out_buf = peek_buf.clone();
 
-    let per_line = 8;
+    let per_line = 16;
+    let parts_len = 8;
     while out_buf.remaining() > 0 {
         if out_buf.remaining() < per_line {
-            println!("{:?}", out_buf.get(0..out_buf.remaining()).unwrap());
+            print!("{:>3?}  ", out_buf.get(0..parts_len).unwrap());
+            println!("{:>3?}", out_buf.get(parts_len..out_buf.remaining()).unwrap());
             break;
         }
-        println!("{:?}", out_buf.get(0..per_line).unwrap());
+        print!("{:>3?}  ", out_buf.get(0..parts_len).unwrap());
+        println!("{:>3?}", out_buf.get(parts_len..per_line).unwrap());
         out_buf.advance(per_line);
     }
     println!("{}", Local::now().format("%Y-%m-%d %H:%M:%S"));
@@ -178,7 +197,10 @@ mod tests {
 006ac000-006b2000 rw-p 000ac000 08:02 8918620   /usr/bin/test1
 0092f000-00a9b000 rw-p 00000000 00:00 0         [heap]";
         let buf_rdr = BufReader::new(contents.as_bytes());
-        assert_eq!(get_base_addr(buf_rdr, &exe_abs_path).unwrap_or_default(), 0x400000);
+        assert_eq!(
+            get_base_addr(buf_rdr, &exe_abs_path).unwrap_or_default(),
+            0x400000
+        );
 
         let exe_abs_path = "/usr/bin/test2";
         let contents = "

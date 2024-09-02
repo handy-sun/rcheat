@@ -1,46 +1,52 @@
-use crate::AnyError;
-
-use anyhow::anyhow;
-
-use goblin::elf::*;
-use goblin::{Hint, Object};
-use goblin::strtab::Strtab;
+// use crate::AnyError;
 use std::convert::TryFrom;
 
+use anyhow::{anyhow, Error};
 
-fn fmt_symbol(sym: &sym::Sym, strtab: &Strtab) {
-    let name = strtab.get_at(sym.st_name).unwrap_or("BAD NAME");
-    println!("{:?} {:?} {:?}", sym.st_bind().to_string(), sym.st_type().to_string(), name);
+use goblin::elf::{sym, Elf};
+use goblin::{Hint, Object};
+
+pub fn match_sym_entry(bytes: &Vec<u8>, keyword: &String) -> Result<(u64, u64, u16), Error> {
+    let elf = parse_elf(&bytes)?;
+
+    let sym_vec = elf.syms.to_vec();
+    let satisfied_syms = sym_vec
+        .iter()
+        .filter(|sym| {
+            let name = elf.strtab.get_at(sym.st_name).unwrap_or("");
+            name.contains(keyword) && sym.st_type() == sym::STT_OBJECT && sym.st_bind() == sym::STB_GLOBAL
+        })
+        .collect::<Vec<&sym::Sym>>();
+
+    match satisfied_syms.len() {
+        0 => Err(anyhow!("Cannot find {} in sym", keyword)),
+        1 => {
+            if let Some(sym) = satisfied_syms.get(0) {
+                return Ok((sym.st_value, sym.st_size, elf.header.e_type));
+            }
+            Err(anyhow!("None sym"))
+        }
+        _len => Err(anyhow!("Find {} counts in sym: {:?}", _len, satisfied_syms)), // TODO: stdin to select?
+    }
 }
 
-pub fn run_parse(in_file: &str) -> AnyError {
-    let bytes = std::fs::read(in_file)
-        .map_err(|err| anyhow::anyhow!("Problem reading file {:?}: {}", in_file, err))?;
+fn parse_elf<'a>(bytes: &'a Vec<u8>) -> Result<Elf<'a>, Error> {
+    const MAGIC_LEN: usize = 16;
 
-    let prefix_bytes_ref = bytes.get(..16).ok_or_else(|| {
-        anyhow!(
-            "File size is too small {:?}: {} bytes",
-            in_file,
-            bytes.len()
-        )
-    })?;
-    let prefix_bytes = <&[u8; 16]>::try_from(prefix_bytes_ref)?;
+    let prefix_bytes_ref = bytes
+        .get(..MAGIC_LEN)
+        .ok_or_else(|| anyhow!("File size is too small: {} bytes", bytes.len()))?;
+    let prefix_bytes = <&[u8; MAGIC_LEN]>::try_from(prefix_bytes_ref)?;
 
     let peek = goblin::peek_bytes(prefix_bytes)?;
     if let Hint::Unknown(magic) = peek {
-        return Err(anyhow::anyhow!("Unknown magic: {:#x}", magic));
+        return Err(anyhow!("Unknown magic: {:#x}", magic));
     }
 
-    let object = Object::parse(&bytes)?;
-
-    match object {
+    match Object::parse(&bytes).unwrap() {
         Object::Elf(elf) => {
-            // Elf::new(elf, bytes, opt).print(),
-            let syms = elf.syms.to_vec();
-            let strtab = elf.strtab;
-            syms.iter().for_each(|sym| fmt_symbol(sym, &strtab));
+            return Ok(elf);
         }
         _ => return Err(anyhow!("object format error")),
     }
-    Ok(())
 }
