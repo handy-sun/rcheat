@@ -1,0 +1,68 @@
+name: build-test
+
+env:
+  CI_INTERMEDIATES_DIR: "_ci-intermediates"
+  CARGO_TERM_COLOR: always
+
+on:
+  push:
+    branches: [ "master", "workflows-patch" ]
+  pull_request:
+    branches: [ "master", "workflows-patch" ]
+
+jobs:
+  build:
+    name: ${{ matrix.job.os }} (${{ matrix.job.target }})
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - {os: ubuntu-18.04, target: x86_64-unknown-linux-gnu}
+          - {os: ubuntu-18.04, target: x86_64-unknown-linux-musl, use-cross: true}
+          - {os: ubuntu-18.04, target: aarch64-unknown-linux-musl, use-cross: true}
+          - {os: ubuntu-18.04, target: aarch64-unknown-linux-gnu, use-cross: true}
+          - {os: ubuntu-18.04, target: arm-unknown-linux-gnueabihf, use-cross: true}
+          - {os: ubuntu-18.04, target: arm-unknown-linux-musleabihf, use-cross: true}
+          - {os: macos-latest, target: aarch64-apple-darwin}
+          - {os: macos-13, target: x86_64-apple-darwin}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+      - name: Install prerequisites
+        shell: bash
+        run: |
+          case ${{ matrix.job.target }} in
+            arm-unknown-linux-*) sudo apt-get -y update ; sudo apt-get -y install gcc-arm-linux-gnueabihf ;;
+            aarch64-unknown-linux-gnu) sudo apt-get -y update ; sudo apt-get -y install gcc-aarch64-linux-gnu ;;
+          esac
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.job.target }}
+          override: true
+          profile: minimal # minimal component installation (ie, no documentation)
+
+      - name: Show version information (Rust, cargo, GCC)
+        shell: bash
+        run: |
+          gcc --version || true
+          rustup -V
+          rustup toolchain list
+          rustup default
+          rustc -V
+
+      - name: Build (debug)
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.job.use-cross }}
+          command: build
+          args: --target=${{ matrix.job.target }} --verbose
+
+      - name: unit test
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.job.use-cross }}
+          command: test
