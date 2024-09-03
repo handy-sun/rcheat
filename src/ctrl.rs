@@ -78,20 +78,6 @@ fn restore_process_to_run(tracked_pid: Pid, err: Error) -> AnyError {
     Err(err)
 }
 
-// fn parse_various_input(indef: &String) -> Result<u64, Error> {
-//     let dec;
-//     if indef.to_lowercase().starts_with("0x") {
-//         let no_pre = &indef[2..];
-//         dec =
-//             u64::from_str_radix(no_pre, 16).map_err(|_| anyhow!("Failed to parse hex string: {}", indef))?;
-//     } else {
-//         dec = indef
-//             .parse::<u64>()
-//             .map_err(|err| anyhow!("Parse to u64 failed: {:?}", err))?;
-//     }
-//     Ok(dec)
-// }
-
 pub fn trace(arg: Args) -> AnyError {
     let tracked_pid = Pid::from_raw(arg.pid);
     let exe_path = get_abs_path(arg.pid)?;
@@ -149,8 +135,7 @@ pub fn trace(arg: Args) -> AnyError {
         }
         match ptrace::read(tracked_pid, addr.wrapping_add(pos)) {
             Ok(long_data) => {
-                peek_buf.put_i64_le(long_data);
-                // peek_buf.put::<c_long>(long_data); // TODO?
+                peek_buf.put(long_data.to_ne_bytes().as_ref());
             }
             Err(errno) => {
                 return restore_process_to_run(tracked_pid, anyhow!("peekdata at {:?}: {:?}", addr, errno));
@@ -206,5 +191,34 @@ mod tests {
 7fc5f7874000-7fc5f7a73000 ---p 00010000 08:02 8918670 /usr/lib64/libtest";
         let buf_rdr = BufReader::new(contents.as_bytes());
         assert_eq!(get_base_addr(buf_rdr, &exe_abs_path).unwrap_or_default(), 0);
+    }
+
+    #[test]
+    fn check_c_long_write_and_read() {
+        #[cfg(target_pointer_width = "64")]
+        {
+            let long_val: c_long = 0x12345678_90abcdef;
+            let mut buf = BytesMut::new();
+            buf.put(long_val.to_ne_bytes().as_ref());
+
+            #[cfg(target_endian = "little")]
+            assert_eq!(buf.get(..), Some(b"\xef\xcd\xab\x90\x78\x56\x34\x12".as_ref()));
+
+            #[cfg(target_endian = "big")]
+            assert_eq!(buf.get(..), Some(b"\x12\x34\x56\x78\x90\xab\xcd\xef".as_ref()));
+        }
+
+        #[cfg(target_pointer_width = "32")]
+        {
+            let long_val: c_long = 0x5678_cdef;
+            let mut buf = BytesMut::new();
+            buf.put(long_val.to_ne_bytes().as_ref());
+
+            #[cfg(target_endian = "little")]
+            assert_eq!(buf.get(..), Some(&[0xef, 0xcd, 0x78, 0x56][..]));
+
+            #[cfg(target_endian = "big")]
+            assert_eq!(buf.get(..), Some([0x56, 0x78, 0xcd, 0xef].as_ref()));
+        }
     }
 }
