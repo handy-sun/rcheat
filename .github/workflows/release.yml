@@ -1,12 +1,19 @@
-name: build-release
+name: release
+
 env:
   CI_INTERMEDIATES_DIR: "_ci-intermediates"
+
 on:
   release:
     types: [created]
   push:
     tags:
-      - 'v*'
+    - "[0-9]+.[0-9]+.[0-9]+"
+
+# We need this to be able to create releases.
+permissions:
+  contents: write
+
 jobs:
   build:
     name: ${{ matrix.job.os }} (${{ matrix.job.target }})
@@ -23,7 +30,7 @@ jobs:
           - {os: ubuntu-22.04, target: arm-unknown-linux-musleabihf, use-cross: true}
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install prerequisites
         shell: bash
         run: |
@@ -55,7 +62,6 @@ jobs:
           rustup -V
           rustup toolchain list
           rustup default
-          cargo -V
           rustc -V
 
       - name: Build
