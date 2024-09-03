@@ -6,6 +6,11 @@ use anyhow::{anyhow, Error};
 use goblin::elf::{sym, Elf};
 use goblin::{Hint, Object};
 
+/// return the tuple: (\
+/// 0: the st_value(always means addr) of the sym entry,\
+/// 1: the st_size of the sym entry,\
+/// 2: elf header e_type\
+/// )
 pub fn match_sym_entry(bytes: &Vec<u8>, keyword: &String) -> Result<(u64, u64, u16), Error> {
     let elf = parse_elf(&bytes)?;
 

@@ -3,9 +3,7 @@ mod load_elf;
 
 use anyhow::{anyhow, Error};
 use clap::Parser;
-
 use nix::libc::pid_t;
-
 use shadow_rs::shadow;
 
 use crate::ctrl::trace;
@@ -25,11 +23,8 @@ pub struct Args {
     /// Process id to trace
     #[arg(short = 'p', long = "pid", default_value_t = -1)]
     pid: pid_t,
-    /// Address of global var
-    #[arg(short = 'a', long = "address", default_value = "")]
-    address: String,
     /// Keyword of the variable which want to search
-    #[arg(short, long, default_value = "", conflicts_with = "address")]
+    #[arg(short, long, default_value = "")]
     keyword: String,
 }
 
@@ -38,7 +33,7 @@ fn run_main(arg: Args) -> AnyError {
 
     if arg.version {
         println!("version     : {}", build::PKG_VERSION);
-        println!("branch      : {} (git_clean: {})", build::BRANCH, build::GIT_CLEAN);
+        println!("branch      : {} (clean: {})", build::BRANCH, build::GIT_CLEAN);
         println!("commit_hash : {}", build::SHORT_COMMIT);
         println!("build_time  : {}", build::BUILD_TIME);
         println!("build_env   : {}, {}", build::RUST_VERSION, build::RUST_CHANNEL);
@@ -50,8 +45,8 @@ fn run_main(arg: Args) -> AnyError {
         return Err(anyhow!("pid: {} is illegal!", arg.pid));
     }
 
-    if arg.address.is_empty() && arg.keyword.is_empty() {
-        return Err(anyhow!("address and keyword must input one!"));
+    if arg.keyword.is_empty() {
+        return Err(anyhow!("the input of keyword option is empty!"));
     }
 
     trace(arg)

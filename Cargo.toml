@@ -1,10 +1,13 @@
 [package]
 name = "rcheat"
-version = "0.0.2"
+version = "0.1.0"
 edition = "2018"
 authors = ["handy-sun <handy-sun@foxmail.com>"]
+homepage = "https://github.com/handy-sun/rcheat"
+repository = "https://github.com/handy-sun/rcheat"
 description = "Cheat a running linux process' memory"
 license = "MIT"
+keywords = ["ptrace", "elf"]
 build = "build.rs"
 
 [dependencies]

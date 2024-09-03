@@ -21,7 +21,7 @@ cargo build
 ```
 
 The first build may take a long time,
-because it needs to download dependent libraries from `.crates.io`
+because it needs to download dependent libraries from `crates.io`
 
 **Tips:**
 If download speed from `.crates.io` is too slow. use a mirror to speed up(e.g. use [rsproxy](https://rsproxy.cn)).
@@ -29,10 +29,18 @@ If download speed from `.crates.io` is too slow. use a mirror to speed up(e.g. u
 
 ## 3. Usage
 
-**NOTE: This program(intcpt) must be run with root privileges!**
+**NOTE: This program must be run with root privileges!**
 
 detail arguments use `-h`
 ```shell
 sudo /path/to/rcheat -h
 ```
 
+## 4. Todo
+
+- [ ] search pid by process name (like linux command: `pidof/pgrep`)
+- [ ] if match more than 1 entry name, ask for which one to select
+- [ ] demangle symbols
+- [ ] use `lua` to custom format the match entry
+- [ ] check for `.bss` section
+- [ ] analysis the elf compiled by `golang` 

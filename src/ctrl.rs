@@ -78,19 +78,19 @@ fn restore_process_to_run(tracked_pid: Pid, err: Error) -> AnyError {
     Err(err)
 }
 
-fn parse_various_input(indef: &String) -> Result<u64, Error> {
-    let dec;
-    if indef.to_lowercase().starts_with("0x") {
-        let no_pre = &indef[2..];
-        dec =
-            u64::from_str_radix(no_pre, 16).map_err(|_| anyhow!("Failed to parse hex string: {}", indef))?;
-    } else {
-        dec = indef
-            .parse::<u64>()
-            .map_err(|err| anyhow!("Parse to u64 failed: {:?}", err))?;
-    }
-    Ok(dec)
-}
+// fn parse_various_input(indef: &String) -> Result<u64, Error> {
+//     let dec;
+//     if indef.to_lowercase().starts_with("0x") {
+//         let no_pre = &indef[2..];
+//         dec =
+//             u64::from_str_radix(no_pre, 16).map_err(|_| anyhow!("Failed to parse hex string: {}", indef))?;
+//     } else {
+//         dec = indef
+//             .parse::<u64>()
+//             .map_err(|err| anyhow!("Parse to u64 failed: {:?}", err))?;
+//     }
+//     Ok(dec)
+// }
 
 pub fn trace(arg: Args) -> AnyError {
     let tracked_pid = Pid::from_raw(arg.pid);
@@ -101,27 +101,26 @@ pub fn trace(arg: Args) -> AnyError {
         std::fs::read(&exe_path).map_err(|err| anyhow!("Problem reading file {:?}: {}", &exe_path, err))?;
 
     let entry_addr;
-    let entry_size;
-    if !arg.keyword.is_empty() {
-        let elf_data = match_sym_entry(&elf_bytes, &arg.keyword)?;
-        entry_size = elf_data.1;
-        match elf_data.2 {
-            header::ET_EXEC => entry_addr = elf_data.0,
-            header::ET_DYN => {
-                let proc_maps = format!("/proc/{}/maps", tracked_pid);
-                let file = File::open(Path::new(&proc_maps))
-                    .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
-                let file_reader = BufReader::new(file);
-                let base_addr = get_base_addr(file_reader, &exe_path.as_str())?;
-                println!("base_addr: {:#x} ({})", base_addr, base_addr);
-                entry_addr = base_addr + elf_data.0;
-            }
-            _ => return Err(anyhow!("Unsupport e_type: {}", elf_data.2)),
+    let elf_data = match_sym_entry(&elf_bytes, &arg.keyword)?;
+    let entry_size = elf_data.1;
+    match elf_data.2 {
+        // Some old linux distribution use this
+        header::ET_EXEC => {
+            entry_addr = elf_data.0;
         }
-    } else {
-        entry_addr = parse_various_input(&arg.address)?;
-        entry_size = 16;
+        // Shared object file use (ASLR)
+        header::ET_DYN => {
+            let proc_maps = format!("/proc/{}/maps", tracked_pid);
+            let file = File::open(Path::new(&proc_maps))
+                .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
+            let file_reader = BufReader::new(file);
+            let base_addr = get_base_addr(file_reader, &exe_path.as_str())?;
+            println!("base_addr: {:#x} ({})", base_addr, base_addr);
+            entry_addr = base_addr + elf_data.0;
+        }
+        _ => return Err(anyhow!("Unsupport e_type: {}", elf_data.2)),
     }
+
     println!("entry address: {:#x}, size: {}", entry_addr, entry_size);
 
     let start = Instant::now();
@@ -165,11 +164,10 @@ pub fn trace(arg: Args) -> AnyError {
     let duration = start.elapsed();
     println!("Time elapsed: {:?}", duration);
 
-    // println!("{:?}", peek_buf);
-    let mut out_buf = peek_buf.clone();
-
+    // for test temp
     let per_line = 16;
     let parts_len = 8;
+    let mut out_buf = peek_buf.clone();
     while out_buf.remaining() > 0 {
         if out_buf.remaining() < per_line {
             print!("{:>3?}  ", out_buf.get(0..parts_len).unwrap());

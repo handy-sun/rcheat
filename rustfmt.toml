@@ -3,3 +3,6 @@ max_width = 110
 
 # use table replace of spaces
 # hard_tabs = true
+
+# nightly version
+# imports_layout = "Vertical"
