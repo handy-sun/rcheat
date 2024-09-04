@@ -13,7 +13,7 @@ use chrono::Local;
 use anyhow::{anyhow, Context, Error};
 
 use nix::fcntl::readlink;
-use nix::libc::{c_long, c_void, pid_t};
+use nix::libc::{c_long, pid_t};
 use nix::sys::ptrace;
 use nix::sys::signal::Signal::SIGCONT;
 use nix::sys::wait;
@@ -121,7 +121,7 @@ pub fn trace(arg: Args) -> AnyError {
         }
     }
 
-    let addr = ptrace::AddressType::from(entry_addr as *mut c_void);
+    let addr = ptrace::AddressType::from(entry_addr as ptrace::AddressType);
     let var_sz = entry_size as usize;
     let mut peek_buf = BytesMut::with_capacity(var_sz);
 
