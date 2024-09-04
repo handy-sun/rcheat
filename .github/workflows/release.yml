@@ -2,13 +2,14 @@ name: release
 
 env:
   CI_INTERMEDIATES_DIR: "_ci-intermediates"
+  CARGO_TERM_COLOR: always
 
 on:
   release:
     types: [created]
   push:
     tags:
-    - "[0-9]+.[0-9]+.[0-9]+"
+      - v[0-9]+.[0-9]+.*
 
 # We need this to be able to create releases.
 permissions:
@@ -28,6 +29,8 @@ jobs:
           - {os: ubuntu-22.04, target: aarch64-unknown-linux-gnu, use-cross: true}
           - {os: ubuntu-22.04, target: arm-unknown-linux-gnueabihf, use-cross: true}
           - {os: ubuntu-22.04, target: arm-unknown-linux-musleabihf, use-cross: true}
+          - {os: macos-latest, target: aarch64-apple-darwin}
+          - {os: macos-13, target: x86_64-apple-darwin}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -59,6 +62,7 @@ jobs:
         shell: bash
         run: |
           gcc --version || true
+          ldd --version || true
           rustup -V
           rustup toolchain list
           rustup default
@@ -76,27 +80,27 @@ jobs:
         shell: bash
         run: |
           # Figure out suffix of binary
-          EXE_suffix=""
+          exe_suffix=""
           case ${{ matrix.job.target }} in
-            *-pc-windows-*) EXE_suffix=".exe" ;;
+            *-pc-windows-*) exe_suffix=".exe" ;;
           esac;
 
-          BIN_NAME="${{ env.PROJECT_NAME }}${EXE_suffix}"
-          PKG_suffix=".tar.gz" ; case ${{ matrix.job.target }} in *-pc-windows-*) PKG_suffix=".zip" ;; esac;
-          PKG_BASENAME=${PROJECT_NAME}-v${PROJECT_VERSION}-${{ matrix.job.target }}
-          PKG_NAME=${PKG_BASENAME}${PKG_suffix}
+          bin_name="${{ env.PROJECT_NAME }}${exe_suffix}"
+          pkg_suffix=".tar.gz" ; case ${{ matrix.job.target }} in *-pc-windows-*) pkg_suffix=".zip" ;; esac;
+          pkg_basename=${PROJECT_NAME}-v${PROJECT_VERSION}-${{ matrix.job.target }}
+          PKG_NAME=${pkg_basename}${pkg_suffix}
           PKG_STAGING="${{ env.CI_INTERMEDIATES_DIR }}/package"
-          ARCHIVE_DIR="${PKG_STAGING}/${PKG_BASENAME}/"
-          mkdir -p "${ARCHIVE_DIR}"
+          archive_dir="${PKG_STAGING}/${pkg_basename}/"
+          mkdir -p "${archive_dir}"
 
           # Binary
-          cp "target/${{ matrix.job.target }}/release/${BIN_NAME}" "$ARCHIVE_DIR"
+          cp "target/${{ matrix.job.target }}/release/${bin_name}" "$archive_dir"
 
           # base compressed package
           pushd "${PKG_STAGING}/" >/dev/null
           case ${{ matrix.job.target }} in
-            *-pc-windows-*) 7z -y a "${PKG_NAME}" "${PKG_BASENAME}"/* | tail -2 ;;
-            *) tar czf "${PKG_NAME}" "${PKG_BASENAME}"/* ;;
+            *-pc-windows-*) 7z -y a "${PKG_NAME}" "${pkg_basename}"/* | tail -2 ;;
+            *) tar czf "${PKG_NAME}" "${pkg_basename}"/* ;;
           esac;
           popd >/dev/null
 
@@ -120,7 +124,8 @@ jobs:
           fi
 
           echo "SUM_NAME=${SUM_NAME}" >> $GITHUB_ENV
-          echo "SUM_PATH=${SUM_PATH}" >> $GITHUB_ENV
+          echo "SUM_NAME=${SUM_NAME}"
+          echo "SUM_PATH=${SUM_PATH}"
 
       - name: "Artifact upload: tarball"
         uses: actions/upload-artifact@master
@@ -128,11 +133,11 @@ jobs:
           name: ${{ env.PKG_NAME }}
           path: ${{ env.PKG_PATH }}
 
-      - name: "Artifact upload: checksum"
-        uses: actions/upload-artifact@master
-        with:
-          name: ${{ env.SUM_NAME }}
-          path: ${{ env.SUM_PATH }}
+      # - name: "Artifact upload: checksum"
+      #   uses: actions/upload-artifact@master
+      #   with:
+      #     name: ${{ env.SUM_NAME }}
+      #     path: ${{ env.SUM_PATH }}
 
       - name: Check for release
         id: is-release
@@ -147,6 +152,6 @@ jobs:
         with:
           files: |
             ${{ env.PKG_PATH }}
-            ${{ env.SUM_PATH }}
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
