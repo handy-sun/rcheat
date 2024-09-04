@@ -3,6 +3,7 @@ name: release
 env:
   CI_INTERMEDIATES_DIR: "_ci-intermediates"
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 on:
   release:

@@ -3,6 +3,7 @@ name: build-test
 env:
   CI_INTERMEDIATES_DIR: "_ci-intermediates"
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 on:
   push:
@@ -67,3 +68,4 @@ jobs:
         with:
           use-cross: ${{ matrix.job.use-cross }}
           command: test
+          args: --target=${{ matrix.job.target }}
