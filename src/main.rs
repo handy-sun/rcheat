@@ -14,7 +14,7 @@ type AnyError = Result<(), Error>;
 #[command(
     disable_version_flag = true,
     name = "rcheat",
-    about = "rcheat - Cheat a running linux process' memory.",
+    about = "rcheat - Get/modify variable's value in another Linux/Unix running process.",
     long_about = None
 )]
 pub struct Args {

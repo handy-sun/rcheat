@@ -1,6 +1,10 @@
-<font size=6>**rcheat**</font>
 
-<font size=5> Cheat a running linux process' memory </font>
+# **rcheat**
+
+[![build-test](https://github.com/handy-sun/rcheat/actions/workflows/build-test.yml/badge.svg)](https://github.com/handy-sun/rcheat/actions/workflows/build-test.yml)
+![latest_release](https://img.shields.io/github/v/tag/handy-sun/rcheat?label=release)
+
+<font size=5> Get/modify variable's value in another Linux/Unix running process </font>
 
 ------
 
