@@ -5,11 +5,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
-on:
-  push:
-    branches: [ "master", "workflows-patch" ]
-  pull_request:
-    branches: [ "master", "workflows-patch" ]
+on: [ push, pull_request]
 
 jobs:
   build:
@@ -50,7 +46,11 @@ jobs:
         shell: bash
         run: |
           gcc --version || true
-          ldd --version || true
+          if commond -v ldd &>/dev/null; then
+            ldd --version
+          elif commond -v otool &>/dev/null; then
+            otool --version
+          fi
           rustup -V
           rustup toolchain list
           rustup default
@@ -84,7 +84,7 @@ jobs:
           # case ${{ matrix.job.target }} in
           #   *apple) echo "donnot check apple dependences" ;;
           # esac;
-
+          bin_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml)"
           bin_path="target/${{ matrix.job.target }}/release/${bin_name}"
           if commond -v ldd &>/dev/null; then
             ldd ${bin_path}
