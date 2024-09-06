@@ -63,7 +63,13 @@ jobs:
         shell: bash
         run: |
           gcc --version || true
-          command -v ldd &>/dev/null && ldd --version || true
+          echo
+          if command -v ldd &>/dev/null; then
+            ldd --version || true
+          elif command -v otool &>/dev/null; then
+            otool --version || true
+          fi
+          echo
           rustup -V
           rustup toolchain list
           rustup default

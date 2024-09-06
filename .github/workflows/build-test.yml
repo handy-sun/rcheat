@@ -46,30 +46,22 @@ jobs:
         shell: bash
         run: |
           gcc --version || true
-          if commond -v ldd &>/dev/null; then
-            ldd --version
-          elif commond -v otool &>/dev/null; then
-            otool --version
+          if command -v ldd &>/dev/null; then
+            ldd --version || true
+          elif command -v otool &>/dev/null; then
+            otool --version || true
           fi
           rustup -V
           rustup toolchain list
           rustup default
           rustc -V
 
-      - name: Show current branch
-        shell: bash
-        run: |
-          raw=$(git branch -r --contains ${{ github.ref }})
-          branch=$(echo ${raw##*/} | tr [:upper:] [:lower:])
-          echo "branch=$branch" >> $GITHUB_OUTPUT
-          echo "Branch is $branch."
-
       - name: Build (debug)
         uses: actions-rs/cargo@v1
         with:
           use-cross: ${{ matrix.job.use-cross }}
           command: build
-          args: --target=${{ matrix.job.target }}
+          args: --target=${{ matrix.job.target }} --verbose
 
       - name: Test (unit)
         uses: actions-rs/cargo@v1
@@ -84,15 +76,17 @@ jobs:
           # case ${{ matrix.job.target }} in
           #   *apple) echo "donnot check apple dependences" ;;
           # esac;
-          bin_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml)"
-          bin_path="target/${{ matrix.job.target }}/release/${bin_name}"
-          if commond -v ldd &>/dev/null; then
-            ldd ${bin_path}
-          elif commond -v otool &>/dev/null; then
-            otool -L ${bin_path}
-          fi
 
-          echo
-          file ${bin_path}
-          echo
-          strings ${bin_path} | grep --color=auto -E '^GLIBC_'
+          bin_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml)"
+          bin_path="target/${{ matrix.job.target }}/debug/${bin_name}"
+
+          if [[ -e "${bin_path}" ]]; then 
+            if command -v ldd &>/dev/null; then
+              ldd ${bin_path} || true
+            elif command -v otool &>/dev/null; then
+              otool -L ${bin_path} || true
+            fi
+          
+            echo
+            file ${bin_path} || true
+          fi
