@@ -69,7 +69,7 @@ jobs:
         with:
           use-cross: ${{ matrix.job.use-cross }}
           command: build
-          args: --target=${{ matrix.job.target }}
+          args: --target=${{ matrix.job.target }} --verbose
 
       - name: Test (unit)
         uses: actions-rs/cargo@v1
@@ -84,15 +84,19 @@ jobs:
           # case ${{ matrix.job.target }} in
           #   *apple) echo "donnot check apple dependences" ;;
           # esac;
-          bin_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml)"
-          bin_path="target/${{ matrix.job.target }}/release/${bin_name}"
-          if commond -v ldd &>/dev/null; then
-            ldd ${bin_path}
-          elif commond -v otool &>/dev/null; then
-            otool -L ${bin_path}
-          fi
 
-          echo
-          file ${bin_path}
-          echo
-          strings ${bin_path} | grep --color=auto -E '^GLIBC_'
+          bin_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml)"
+          bin_path="target/${{ matrix.job.target }}/debug/${bin_name}"
+
+          if [[ -e "${bin_path}" ]]; then 
+            if commond -v ldd &>/dev/null; then
+              ldd ${bin_path}
+            elif commond -v otool &>/dev/null; then
+              otool -L ${bin_path}
+            fi
+          
+            echo
+            file ${bin_path}
+            echo
+            strings ${bin_path} | grep --color=auto -E '^GLIBC_'
+          fi
