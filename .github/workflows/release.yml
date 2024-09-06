@@ -63,7 +63,7 @@ jobs:
         shell: bash
         run: |
           gcc --version || true
-          command -v ldd &>/dev/null && ldd --version || true
+          ldd --version || true
           rustup -V
           rustup toolchain list
           rustup default
@@ -119,10 +119,14 @@ jobs:
           OS="$(uname -s)"
 
           if [ "$OS" == "Linux" ]; then
-            echo "SUM_NAME=$(sha256sum ${PKG_PATH})"
+            sha256sum ${PKG_PATH} > ${SUM_PATH}
           elif [ "$OS" == "Darwin" ]; then
-            echo "SUM_NAME=$(shasum -a 256 ${PKG_PATH})"
+            shasum -a 256 ${PKG_PATH} > ${SUM_PATH}
           fi
+
+          echo "SUM_NAME=${SUM_NAME}" >> $GITHUB_ENV
+          echo "SUM_NAME=${SUM_NAME}"
+          echo "SUM_PATH=${SUM_PATH}"
 
       - name: "Artifact upload: tarball"
         uses: actions/upload-artifact@master
