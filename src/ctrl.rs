@@ -1,3 +1,4 @@
+use crate::fmt_dump::*;
 use crate::load_elf::match_sym_entry;
 use crate::AnyError;
 use crate::Args;
@@ -7,8 +8,6 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::result::Result::Ok;
 use std::{mem, time::Instant};
-
-use chrono::Local;
 
 use anyhow::{anyhow, Context, Error};
 
@@ -21,9 +20,29 @@ use nix::unistd::Pid;
 
 use goblin::elf::header;
 
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{BufMut, BytesMut};
 
 const LONG_SIZE: usize = mem::size_of::<c_long>();
+
+/// `maps column means`
+
+/// vm_addr range `addr_begin`-`addr_end`
+const ADDR_RANGE: usize = 0;
+
+/// permission of this area `rwx(p/s)`
+// const PERMISSION: usize = 1;
+
+/// offset from the base addr
+const OFFSET: usize = 2;
+
+/// main device id : secondary device id
+// const MAIN_2ND_DEV: usize = 3;
+
+/// inode of the file
+// const INODE: usize = 4;
+
+/// absolute path of ref file
+const FILE_ABS_PATH: usize = 5;
 
 fn pass_or_exit(ret: &nix::Result<()>, msg: &str) -> AnyError {
     match ret {
@@ -55,12 +74,13 @@ fn get_base_addr<R: BufRead>(buf_read: R, exe_path: &str) -> Result<u64, Error> 
             continue;
         }
 
-        if cols.get(2) == Some(&"00000000") && cols.get(5) == Some(&exe_path) {
-            let col_0 = cols.get(0).ok_or_else(|| anyhow!("Column 0 is missing"))?;
-
+        if cols.get(OFFSET) == Some(&"00000000") && cols.get(FILE_ABS_PATH) == Some(&exe_path) {
+            let col_0 = cols
+                .get(ADDR_RANGE)
+                .ok_or_else(|| anyhow!("Column ADDR_RANGE(0) is missing"))?;
             match col_0.find('-') {
                 Some(pos) => {
-                    let hex_str = &col_0[0..pos];
+                    let hex_str = &col_0[..pos];
                     return u64::from_str_radix(hex_str, 16)
                         .map_err(|_| anyhow!("Failed to parse hex string: {}", hex_str));
                 }
@@ -86,26 +106,23 @@ pub fn trace(arg: Args) -> AnyError {
     let elf_bytes =
         std::fs::read(&exe_path).map_err(|err| anyhow!("Problem reading file {:?}: {}", &exe_path, err))?;
 
-    let entry_addr;
     let elf_data = match_sym_entry(&elf_bytes, &arg.keyword)?;
     let entry_size = elf_data.1;
-    match elf_data.2 {
+    let entry_addr = match elf_data.2 {
         // Some old linux distribution use this
-        header::ET_EXEC => {
-            entry_addr = elf_data.0;
-        }
+        header::ET_EXEC => elf_data.0,
         // Shared object file use (ASLR)
         header::ET_DYN => {
             let proc_maps = format!("/proc/{}/maps", tracked_pid);
             let file = File::open(Path::new(&proc_maps))
                 .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
             let file_reader = BufReader::new(file);
-            let base_addr = get_base_addr(file_reader, &exe_path.as_str())?;
+            let base_addr = get_base_addr(file_reader, exe_path.as_str())?;
             println!("base_addr: {:#x} ({})", base_addr, base_addr);
-            entry_addr = base_addr + elf_data.0;
+            base_addr + elf_data.0
         }
         _ => return Err(anyhow!("Unsupport e_type: {}", elf_data.2)),
-    }
+    };
 
     println!("entry address: {:#x}, size: {}", entry_addr, entry_size);
 
@@ -128,10 +145,10 @@ pub fn trace(arg: Args) -> AnyError {
     let mut pos: usize = 0;
     while pos < var_sz {
         if pos + LONG_SIZE > var_sz {
-            print!("before pos: {}, ", pos);
+            let old_pos = pos;
             pos = var_sz - LONG_SIZE;
             peek_buf.truncate(pos);
-            println!("now pos: {}", pos);
+            println!("truncate length from: {} to {}", old_pos, pos);
         }
         match ptrace::read(tracked_pid, addr.wrapping_add(pos)) {
             Ok(long_data) => {
@@ -148,23 +165,17 @@ pub fn trace(arg: Args) -> AnyError {
 
     let duration = start.elapsed();
     println!("Time elapsed: {:?}", duration);
-
-    // for test temp
-    let per_line = 16;
-    let parts_len = 8;
-    let mut out_buf = peek_buf.clone();
-    while out_buf.remaining() > 0 {
-        if out_buf.remaining() < per_line {
-            print!("{:>3?}  ", out_buf.get(0..parts_len).unwrap());
-            println!("{:>3?}", out_buf.get(parts_len..out_buf.remaining()).unwrap());
-            break;
-        }
-        print!("{:>3?}  ", out_buf.get(0..parts_len).unwrap());
-        println!("{:>3?}", out_buf.get(parts_len..per_line).unwrap());
-        out_buf.advance(per_line);
+    if let Some(bytes_ref) = peek_buf.get(..) {
+        let out_content = if arg.format == "dec" {
+            dump_to_dec_content(bytes_ref)
+        } else {
+            dump_to_hex_content(bytes_ref)
+        };
+        println!("\n{}", out_content);
+        Ok(())
+    } else {
+        Err(anyhow!("Peek buf is empty"))
     }
-    println!("{}", Local::now().format("%Y-%m-%d %H:%M:%S"));
-    Ok(())
 }
 
 #[cfg(test)]
@@ -180,17 +191,14 @@ mod tests {
 006ac000-006b2000 rw-p 000ac000 08:02 8918620   /usr/bin/test1
 0092f000-00a9b000 rw-p 00000000 00:00 0         [heap]";
         let buf_rdr = BufReader::new(contents.as_bytes());
-        assert_eq!(
-            get_base_addr(buf_rdr, &exe_abs_path).unwrap_or_default(),
-            0x400000
-        );
+        assert_eq!(get_base_addr(buf_rdr, exe_abs_path).unwrap_or_default(), 0x400000);
 
         let exe_abs_path = "/usr/bin/test2";
         let contents = "
 7fc5f7864000-7fc5f7874000 r-xp 00000000 08:02 8918670 /usr/lib64/libtest
 7fc5f7874000-7fc5f7a73000 ---p 00010000 08:02 8918670 /usr/lib64/libtest";
         let buf_rdr = BufReader::new(contents.as_bytes());
-        assert_eq!(get_base_addr(buf_rdr, &exe_abs_path).unwrap_or_default(), 0);
+        assert_eq!(get_base_addr(buf_rdr, exe_abs_path).unwrap_or_default(), 0);
     }
 
     #[test]

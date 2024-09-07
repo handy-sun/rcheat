@@ -1,4 +1,5 @@
 mod ctrl;
+mod fmt_dump;
 mod load_elf;
 
 use anyhow::{anyhow, Error};
@@ -26,6 +27,9 @@ pub struct Args {
     /// Keyword of the variable which want to search
     #[arg(short, long, default_value = "")]
     keyword: String,
+    /// Format output 'hex' or 'dec'
+    #[arg(short, long, default_value = "hex")]
+    format: String,
 }
 
 fn run_main(arg: Args) -> AnyError {
