@@ -46,12 +46,12 @@ body:
       label: Environment
       description: |
         examples:
-          - **Dae version (use option: `--version`)**: v0.2.4
+          - **Project version (use option: `--version`)**: v0.2.4
           - **OS (e.g `cat /etc/os-release`)**: Debian 12
           - **Kernel (e.g. `uname -a`)**: 6.4.8-arch1-1
           - **Others**: NA
       value: |
-          - **Dae version (use option: `--version`)**:
+          - **Project version (use option: `--version`)**:
           - **OS (e.g `cat /etc/os-release`)**:
           - **Kernel (e.g. `uname -a`)**:
           - **Others**:
