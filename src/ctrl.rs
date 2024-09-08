@@ -1,12 +1,11 @@
+use crate::elf::ElfMgr;
 use crate::fmt_dump::*;
-use crate::load_elf::match_sym_entry;
 use crate::AnyError;
 use crate::Args;
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::result::Result::Ok;
 use std::{mem, time::Instant};
 
 use anyhow::{anyhow, Context, Error};
@@ -17,8 +16,6 @@ use nix::sys::ptrace;
 use nix::sys::signal::Signal::SIGCONT;
 use nix::sys::wait;
 use nix::unistd::Pid;
-
-use goblin::elf::header;
 
 use bytes::{BufMut, BytesMut};
 
@@ -106,26 +103,29 @@ pub fn trace(arg: Args) -> AnyError {
     let elf_bytes =
         std::fs::read(&exe_path).map_err(|err| anyhow!("Problem reading file {:?}: {}", &exe_path, err))?;
 
-    let elf_data = match_sym_entry(&elf_bytes, &arg.keyword)?;
-    let entry_size = elf_data.1;
-    let entry_addr = match elf_data.2 {
-        // Some old linux distribution use this
-        header::ET_EXEC => elf_data.0,
-        // Shared object file use (ASLR)
-        header::ET_DYN => {
-            let proc_maps = format!("/proc/{}/maps", tracked_pid);
-            let file = File::open(Path::new(&proc_maps))
-                .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
-            let file_reader = BufReader::new(file);
-            let base_addr = get_base_addr(file_reader, exe_path.as_str())?;
-            println!("base_addr: {:#x} ({})", base_addr, base_addr);
-            base_addr + elf_data.0
-        }
-        _ => return Err(anyhow!("Unsupport e_type: {}", elf_data.2)),
+    let start = Instant::now();
+    // let elf_data = match_sym_entry(&elf_bytes, &arg.keyword)?;
+    let elf_mgr = ElfMgr::prase_from(&elf_bytes)?;
+    let entry = elf_mgr.select_sym_entry(&arg.keyword)?;
+
+    let entry_addr = if elf_mgr.is_exec_elf() {
+        entry.obj_addr()
+    } else if elf_mgr.is_dyn_elf() {
+        let proc_maps = format!("/proc/{}/maps", tracked_pid);
+        let file = File::open(Path::new(&proc_maps))
+            .map_err(|err| anyhow!("Problem open file {:?}: {}", proc_maps, err))?;
+        let file_reader = BufReader::new(file);
+        let base_addr = get_base_addr(file_reader, exe_path.as_str())?;
+        println!("base_addr: {:#x} ({})", base_addr, base_addr);
+        base_addr + entry.obj_addr()
+    } else {
+        return Err(anyhow!("Unsupport e_type:"));
     };
 
-    println!("entry address: {:#x}, size: {}", entry_addr, entry_size);
+    println!("entry address: {:#x}, size: {}", entry_addr, entry.obj_size());
 
+    let duration = start.elapsed();
+    println!("[{:?}] Time of `parse elf`", duration);
     let start = Instant::now();
     pass_or_exit(&ptrace::attach(tracked_pid), "ptrace_attach")?;
 
@@ -139,7 +139,7 @@ pub fn trace(arg: Args) -> AnyError {
     }
 
     let addr = ptrace::AddressType::from(entry_addr as ptrace::AddressType);
-    let var_sz = entry_size as usize;
+    let var_sz = entry.obj_size() as usize;
     let mut peek_buf = BytesMut::with_capacity(var_sz);
 
     let mut pos: usize = 0;
@@ -164,7 +164,7 @@ pub fn trace(arg: Args) -> AnyError {
     pass_or_exit(&ptrace::detach(tracked_pid, None), "ptrace_detach")?;
 
     let duration = start.elapsed();
-    println!("Time elapsed: {:?}", duration);
+    println!("[{:?}] Time of `trace`", duration);
     if let Some(bytes_ref) = peek_buf.get(..) {
         let out_content = if arg.format == "dec" {
             dump_to_dec_content(bytes_ref)

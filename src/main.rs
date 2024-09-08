@@ -1,6 +1,7 @@
 mod ctrl;
 mod fmt_dump;
-mod load_elf;
+// mod load_elf;
+mod elf;
 
 use anyhow::{anyhow, Error};
 use clap::Parser;
