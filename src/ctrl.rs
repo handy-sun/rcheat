@@ -1,3 +1,4 @@
+use crate::ceil_to_multiple;
 use crate::elf::ElfMgr;
 use crate::fmt_dump::*;
 use crate::AnyError;
@@ -106,6 +107,8 @@ pub fn trace(arg: Args) -> AnyError {
     let start = Instant::now();
     // let elf_data = match_sym_entry(&elf_bytes, &arg.keyword)?;
     let elf_mgr = ElfMgr::prase_from(&elf_bytes)?;
+    println!("[{:?}] Time of `parse elf`", start.elapsed());
+
     let entry = elf_mgr.select_sym_entry(&arg.keyword)?;
 
     let entry_addr = if elf_mgr.is_exec_elf() {
@@ -117,15 +120,17 @@ pub fn trace(arg: Args) -> AnyError {
         let file_reader = BufReader::new(file);
         let base_addr = get_base_addr(file_reader, exe_path.as_str())?;
         println!("base_addr: {:#x} ({})", base_addr, base_addr);
-        base_addr + entry.obj_addr()
+        if let Some(total_addr) = base_addr.checked_add(entry.obj_addr()) {
+            total_addr
+        } else {
+            return Err(anyhow!("Operation of base_addr add obj_addr exceeds the limit"));
+        }
     } else {
         return Err(anyhow!("Unsupport e_type:"));
     };
 
     println!("entry address: {:#x}, size: {}", entry_addr, entry.obj_size());
 
-    let duration = start.elapsed();
-    println!("[{:?}] Time of `parse elf`", duration);
     let start = Instant::now();
     pass_or_exit(&ptrace::attach(tracked_pid), "ptrace_attach")?;
 
@@ -140,31 +145,46 @@ pub fn trace(arg: Args) -> AnyError {
 
     let addr = ptrace::AddressType::from(entry_addr as ptrace::AddressType);
     let var_sz = entry.obj_size() as usize;
-    let mut peek_buf = BytesMut::with_capacity(var_sz);
+    // It can be confirmed that this number(var_sz) must be greater than 0
+    let mut peek_buf = BytesMut::with_capacity(ceil_to_multiple!(var_sz, LONG_SIZE));
 
-    let mut pos: usize = 0;
-    while pos < var_sz {
-        if pos + LONG_SIZE > var_sz {
-            let old_pos = pos;
-            pos = var_sz - LONG_SIZE;
-            peek_buf.truncate(pos);
-            println!("truncate length from: {} to {}", old_pos, pos);
-        }
-        match ptrace::read(tracked_pid, addr.wrapping_add(pos)) {
+    // The target address size less than c_long, only need read once, and then
+    // truncate BytesMut to real size
+    if var_sz < LONG_SIZE {
+        match ptrace::read(tracked_pid, addr) {
             Ok(long_data) => {
                 peek_buf.put(long_data.to_ne_bytes().as_ref());
+                peek_buf.truncate(var_sz);
             }
             Err(errno) => {
                 return restore_process_to_run(tracked_pid, anyhow!("peekdata at {:?}: {:?}", addr, errno));
             }
+        };
+    } else {
+        let mut pos: usize = 0;
+        while pos < var_sz {
+            if pos + LONG_SIZE > var_sz {
+                pos = var_sz - LONG_SIZE;
+                peek_buf.truncate(pos);
+            }
+            match ptrace::read(tracked_pid, addr.wrapping_add(pos)) {
+                Ok(long_data) => {
+                    peek_buf.put(long_data.to_ne_bytes().as_ref());
+                }
+                Err(errno) => {
+                    return restore_process_to_run(
+                        tracked_pid,
+                        anyhow!("peekdata at {:?}: {:?}", addr, errno),
+                    );
+                }
+            }
+            pos += LONG_SIZE;
         }
-        pos += LONG_SIZE;
     }
 
     pass_or_exit(&ptrace::detach(tracked_pid, None), "ptrace_detach")?;
 
-    let duration = start.elapsed();
-    println!("[{:?}] Time of `trace`", duration);
+    println!("[{:?}] Time of `trace and peek`", start.elapsed());
     if let Some(bytes_ref) = peek_buf.get(..) {
         let out_content = if arg.format == "dec" {
             dump_to_dec_content(bytes_ref)
@@ -183,7 +203,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn _get_base_addr() {
+    fn func_get_base_addr() {
         let exe_abs_path = "/usr/bin/test1";
         let contents = "
 00400000-004ac000 r-xp 00000000 08:02 8918620   /usr/bin/test1

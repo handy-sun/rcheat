@@ -1,6 +1,8 @@
 mod ctrl;
 mod elf;
 mod fmt_dump;
+// #[macro_use]
+mod macros;
 
 use anyhow::{anyhow, Error};
 use clap::Parser;

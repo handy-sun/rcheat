@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::io;
+use std::time::Instant;
 
 use anyhow::{anyhow, Error};
 
@@ -44,10 +45,7 @@ impl<'a> ElfMgr<'a> {
         }
 
         match Object::parse(bytes).unwrap() {
-            Object::Elf(val) => Ok(ElfMgr {
-                elf: val,
-                // satisfied_entry: SymEntry::default(),
-            }),
+            Object::Elf(val) => Ok(ElfMgr { elf: val }),
             _ => Err(anyhow!("Object format not support")),
         }
     }
@@ -61,6 +59,7 @@ impl<'a> ElfMgr<'a> {
     }
 
     pub fn select_sym_entry(&self, keyword: &String) -> Result<SymEntry, Error> {
+        let start = Instant::now();
         let strtab = &self.elf.strtab;
         let syms = self.elf.syms.to_vec();
         // let dyn_strtab = &self.elf.dynstrtab;
@@ -74,6 +73,7 @@ impl<'a> ElfMgr<'a> {
             .filter_map(|sym| self.filter_symbol(sym, strtab, keyword));
 
         let emtry_vec: Vec<SymEntry> = map_iter.collect();
+        println!("[{:?}] Time of `filter_symbol`", start.elapsed());
         println!("Matched count: {}", emtry_vec.len());
         match emtry_vec.len() {
             0 => Err(anyhow!("cannot find")),
@@ -117,7 +117,8 @@ impl<'a> ElfMgr<'a> {
                 || dem_name.contains("std::")
                 || dem_name.starts_with("__gnu_")
                 || dem_name.starts_with("__cxxabiv")
-                || dem_name.starts_with("guard variable"))
+                || dem_name.starts_with("guard variable")
+                || dem_name.ends_with(")::__func__"))
         {
             #[cfg(debug_assertions)]
             eprintln!(
