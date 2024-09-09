@@ -3,8 +3,9 @@
 
 [![build-test](https://github.com/handy-sun/rcheat/actions/workflows/build-test.yml/badge.svg)](https://github.com/handy-sun/rcheat/actions/workflows/build-test.yml)
 ![latest_release](https://img.shields.io/github/v/tag/handy-sun/rcheat?label=release)
+![Linux](https://img.shields.io/badge/-Linux-grey?logo=linux)
 
-<font size=5> Get/modify variable's value in another Linux/Unix running process </font>
+> *Get/modify simple variable's value in another Linux running process*
 
 ------
 
@@ -42,9 +43,8 @@ sudo /path/to/rcheat -h
 
 ## 4. Todo
 
-- [ ] search pid by process name (like linux command: `pidof/pgrep`)
-- [ ] if match more than 1 entry name, ask for which one to select
-- [ ] demangle symbols
 - [ ] use `lua` to custom format the match entry
-- [ ] check for `.bss` section
+- [ ] search pid by process name (like linux command: `pidof/pgrep`)
+- [x] if match more than 1 entry name, ask for which one to select
+- [x] demangle symbols
 - [ ] analysis the elf compiled by `golang` 

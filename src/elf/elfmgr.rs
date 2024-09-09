@@ -74,79 +74,61 @@ impl<'a> ElfMgr<'a> {
             .filter_map(|sym| self.filter_symbol(sym, strtab, keyword));
 
         let emtry_vec: Vec<SymEntry> = map_iter.collect();
-        println!("emtry_vec.len: {}", emtry_vec.len());
+        println!("Matched count: {}", emtry_vec.len());
         match emtry_vec.len() {
             0 => Err(anyhow!("cannot find")),
-            1 => Ok(emtry_vec[0].clone()),
+            1 => Ok(emtry_vec.first().unwrap().clone()),
             2.. => {
-                for i in 0..emtry_vec.len() {
-                    let emtry = &emtry_vec[i];
+                for (i, emtry) in emtry_vec.iter().enumerate() {
                     println!(
-                        "{}: {:40} | {:7} | {:7} | {}",
+                        "{}: {:40} | {:7} | {:6} | {}",
                         i,
                         emtry.origin_name,
                         emtry.obj_size,
-                        emtry.section,
                         sym::bind_to_str(emtry.bind_type),
+                        emtry.section,
                     );
                 }
-
-                let mut line_input = String::new();
-                println!("Please input index to choose the var: ");
-                // read from tty input
-                let mut index: usize;
-                loop {
-                    io::stdin()
-                        .read_line(&mut line_input)
-                        .expect("Failed to read line");
-
-                    index = line_input.trim().parse().expect("Index entered was not a number");
-
-                    if index < emtry_vec.len() {
-                        break;
-                    }
-                    println!("Input: {} out of range, try again: ", index);
-                }
-                Ok(emtry_vec[index].clone())
+                loop_inquire_index(&emtry_vec)
             }
         }
     }
 
     fn filter_symbol(&self, sym: &sym::Sym, strtab: &Strtab, keyword: &String) -> Option<SymEntry> {
+        // filter: LOCAL&OBJECT or GLOBAL&OBJECT
         if sym.st_type() != sym::STT_OBJECT
             || (sym.st_bind() != sym::STB_LOCAL && sym.st_bind() != sym::STB_GLOBAL)
         {
             return None;
         }
 
-        let name = strtab.get_at(sym.st_name).unwrap_or("BAD NAME");
-        // assert_eq!(Name::from(name).detect_language(), Language::Cpp);
-        let dem_name = union_demangle(name);
-
+        let sym_symbol = strtab.get_at(sym.st_name).unwrap_or("BAD NAME");
+        let (is_demangled, dem_name) = match try_multi_demangle(sym_symbol) {
+            Ok(origin) => (true, origin),
+            Err(_multi_err) => (false, "".to_string()),
+        };
         let shn = shndx_to_str(sym.st_shndx, &self.elf.section_headers, &self.elf.shdr_strtab);
 
-        if (
-            shn.eq(".bss")
-            // || shn.eq(".rodata")
-        ) && !(dem_name.contains("@GLIBC")
-            || dem_name.contains("_stdin")
-            || dem_name.contains("_stdout")
-            || dem_name.contains("anonymous")
-            || dem_name.starts_with("__")
-            || dem_name.starts_with("_dl")
-            || dem_name.starts_with("_nl")
-            || dem_name.starts_with("std::"))
+        if is_demangled
             && sym.st_size > 0
+            && (shn.starts_with(".bss(") || shn.starts_with(".rodata(") || shn.starts_with(".data"))
+            && !(dem_name.contains("(anonymous namespace)")
+                // || dem_name.contains("@GLIBC")
+                || dem_name.contains("std::")
+                || dem_name.starts_with("__gnu_")
+                || dem_name.starts_with("__cxxabiv")
+                || dem_name.starts_with("guard variable"))
         {
             #[cfg(debug_assertions)]
-            println!(
-                "{:7} | {:7} | {:8} | {:70} |",
+            eprintln!(
+                "{:6} | {:5} | {:12} | {:40} | {}",
                 sym::bind_to_str(sym.st_bind()),
                 sym.st_size,
                 shn,
-                dem_name
+                dem_name,
+                sym_symbol
             );
-            if dem_name.contains(keyword) {
+            if dem_name.contains(keyword) || keyword.is_empty() {
                 return Some(SymEntry {
                     obj_addr: sym.st_value,
                     obj_size: sym.st_size,
@@ -164,9 +146,15 @@ fn shndx_to_str(idx: usize, shdrs: &SectionHeaders, strtab: &Strtab) -> String {
     if idx == 0 {
         String::from("")
     } else if let Some(shdr) = shdrs.get(idx) {
-        if let Some(link_name) = strtab.get_at(shdr.sh_name).map(move |s| union_demangle(s)) {
-            // format!("{}({})", link_name, idx)
-            link_name
+        if let Some(link_name) = strtab
+            .get_at(shdr.sh_name)
+            .map(|_str| match try_multi_demangle(_str) {
+                Ok(origin) => origin,
+                Err(_) => _str.to_string(),
+            })
+        // TODO: need try_multi_demangle?
+        {
+            format!("{}({})", link_name, idx)
         } else {
             format!("BAD_IDX={}", shdr.sh_name)
         }
@@ -178,12 +166,57 @@ fn shndx_to_str(idx: usize, shdrs: &SectionHeaders, strtab: &Strtab) -> String {
     }
 }
 
-fn union_demangle(s: &str) -> String {
+fn try_multi_demangle(s: &str) -> Result<String, Error> {
     match cpp_demangle::Symbol::new(s) {
-        Ok(_symbol) => _symbol.to_string(),
-        Err(_) => match rustc_demangle::try_demangle(s) {
-            Ok(demangled) => demangled.to_string(),
-            Err(_) => s.to_string(),
+        Ok(_symbol) => Ok(_symbol.to_string()),
+        Err(cpp_dem_err) => match rustc_demangle::try_demangle(s) {
+            Ok(demangled) => Ok(demangled.to_string()),
+            Err(rust_dem_err) => Err(anyhow!("`cpp:{:?}, rust:{:?}`", cpp_dem_err, rust_dem_err)),
         },
+    }
+}
+
+/// the slice's len better greater than 0
+fn loop_inquire_index<T>(entry_slice: &[T]) -> Result<T, Error>
+where
+    T: Clone,
+{
+    if entry_slice.is_empty() {
+        return Err(anyhow!("The slice is empty"));
+    }
+    println!("Please input index to choose the var(default is 0): ");
+    let mut line_input = String::with_capacity(16);
+    loop {
+        line_input.clear();
+        match io::stdin().read_line(&mut line_input) {
+            Ok(byte_count) => {
+                // eprintln!("{} bytes read", byte_count);
+                if let 0 = byte_count {
+                    println!("read_line Ok and 0 byte read means EndOfFile");
+                    return Err(anyhow!("EOF"));
+                }
+                let trimmed_input = line_input.trim();
+                match trimmed_input.parse::<usize>() {
+                    Ok(index) => {
+                        if index < entry_slice.len() {
+                            return Ok(entry_slice[index].clone());
+                        } else {
+                            println!(
+                                "Input: {} out of range(available is [0, {}]): ",
+                                index,
+                                entry_slice.len() - 1
+                            );
+                        }
+                    }
+                    Err(parse_err) => {
+                        if trimmed_input.is_empty() {
+                            return Ok(entry_slice[0].clone());
+                        }
+                        println!("{:?} '{}', try again: ", parse_err, trimmed_input);
+                    }
+                }
+            }
+            Err(std_error) => println!("Failed to read line: {:?}", std_error),
+        }
     }
 }

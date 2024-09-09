@@ -1,7 +1,6 @@
 mod ctrl;
-mod fmt_dump;
-// mod load_elf;
 mod elf;
+mod fmt_dump;
 
 use anyhow::{anyhow, Error};
 use clap::Parser;
@@ -16,7 +15,7 @@ type AnyError = Result<(), Error>;
 #[command(
     disable_version_flag = true,
     name = "rcheat",
-    about = "rcheat - Get/modify variable's value in another Linux/Unix running process.",
+    about = "rcheat - Get/modify variable's value in another Linux running process.",
     long_about = None
 )]
 pub struct Args {
@@ -50,9 +49,9 @@ fn run_main(arg: Args) -> AnyError {
         return Err(anyhow!("pid: {} is illegal!", arg.pid));
     }
 
-    if arg.keyword.is_empty() {
-        return Err(anyhow!("the input of keyword option is empty!"));
-    }
+    // if arg.keyword.is_empty() {
+    //     return Err(anyhow!("the input of keyword option is empty!"));
+    // }
 
     trace(arg)
 }
