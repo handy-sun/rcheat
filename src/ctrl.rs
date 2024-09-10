@@ -27,17 +27,20 @@ const LONG_SIZE: usize = mem::size_of::<c_long>();
 /// vm_addr range `addr_begin`-`addr_end`
 const ADDR_RANGE: usize = 0;
 
+#[allow(dead_code)]
 /// permission of this area `rwx(p/s)`
-// const PERMISSION: usize = 1;
+const PERMISSION: usize = 1;
 
 /// offset from the base addr
 const OFFSET: usize = 2;
 
+#[allow(dead_code)]
 /// main device id : secondary device id
-// const MAIN_2ND_DEV: usize = 3;
+const MAIN_2ND_DEV: usize = 3;
 
+#[allow(dead_code)]
 /// inode of the file
-// const INODE: usize = 4;
+const INODE: usize = 4;
 
 /// absolute path of ref file
 const FILE_ABS_PATH: usize = 5;
@@ -218,7 +221,7 @@ mod tests {
 7fc5f7864000-7fc5f7874000 r-xp 00000000 08:02 8918670 /usr/lib64/libtest
 7fc5f7874000-7fc5f7a73000 ---p 00010000 08:02 8918670 /usr/lib64/libtest";
         let buf_rdr = BufReader::new(contents.as_bytes());
-        assert_eq!(get_base_addr(buf_rdr, exe_abs_path).unwrap_or_default(), 0);
+        assert!(!get_base_addr(buf_rdr, exe_abs_path).is_ok());
     }
 
     #[test]
