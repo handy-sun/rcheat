@@ -3,18 +3,6 @@ description: report any bugs
 title: '[Bug Report] <title>'
 labels: [topic/bug]
 body:
-  - type: checkboxes
-    attributes:
-      label: Checks
-      description: Please search to see if an issue already exists for the bug you encountered.
-      options:
-        - label: I have searched the existing issues
-          required: true
-        - label: I have read the documentation
-          required: true
-        - label: Is it your first time sumbitting an issue
-          required: true
-
   - type: textarea
     attributes:
       label: Current Behavior
@@ -48,12 +36,10 @@ body:
         examples:
           - **Project version (use option: `--version`)**: v0.2.4
           - **OS (e.g `cat /etc/os-release`)**: Debian 12
-          - **Kernel (e.g. `uname -a`)**: 6.4.8-arch1-1
           - **Others**: NA
       value: |
           - **Project version (use option: `--version`)**:
           - **OS (e.g `cat /etc/os-release`)**:
-          - **Kernel (e.g. `uname -a`)**:
           - **Others**:
     validations:
       required: false

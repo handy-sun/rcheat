@@ -10,6 +10,15 @@ license = "MIT"
 readme = "README.md"
 keywords = ["ptrace", "elf"]
 build = "build.rs"
+exclude = [
+    ".githooks/*",
+    ".github/**/*",
+    ".gitignore",
+]
+
+[[bin]]
+name = "rcheat"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5.0", features = ["derive", "wrap_help"] }

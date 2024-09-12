@@ -4,6 +4,7 @@ mod fmt_dump;
 // #[macro_use]
 mod macros;
 
+use ansi_term::Color::Red;
 use anyhow::{anyhow, Error};
 use clap::Parser;
 use nix::libc::pid_t;
@@ -38,11 +39,18 @@ fn run_main(arg: Args) -> AnyError {
     shadow!(build);
 
     if arg.version {
-        println!("version     : {}", build::PKG_VERSION);
-        println!("branch      : {} (clean: {})", build::BRANCH, build::GIT_CLEAN);
-        println!("commit_hash : {}", build::SHORT_COMMIT);
-        println!("build_time  : {}", build::BUILD_TIME);
-        println!("build_env   : {}, {}", build::RUST_VERSION, build::RUST_CHANNEL);
+        let commit_hash_with_clean_color = if build::GIT_CLEAN {
+            String::from(build::SHORT_COMMIT)
+        } else {
+            Red.paint(build::SHORT_COMMIT).to_string()
+        };
+        println!(
+            "{} {} ({} {})",
+            build::PROJECT_NAME,
+            build::PKG_VERSION,
+            commit_hash_with_clean_color,
+            build::BUILD_TIME
+        );
         return Ok(());
     }
 

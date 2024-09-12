@@ -27,19 +27,19 @@ const LONG_SIZE: usize = mem::size_of::<c_long>();
 /// vm_addr range `addr_begin`-`addr_end`
 const ADDR_RANGE: usize = 0;
 
-#[allow(dead_code)]
 /// permission of this area `rwx(p/s)`
+#[allow(dead_code)]
 const PERMISSION: usize = 1;
 
 /// offset from the base addr
 const OFFSET: usize = 2;
 
-#[allow(dead_code)]
 /// main device id : secondary device id
+#[allow(dead_code)]
 const MAIN_2ND_DEV: usize = 3;
 
-#[allow(dead_code)]
 /// inode of the file
+#[allow(dead_code)]
 const INODE: usize = 4;
 
 /// absolute path of ref file

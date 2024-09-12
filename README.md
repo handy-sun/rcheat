@@ -3,6 +3,7 @@
 
 [![build-test](https://github.com/handy-sun/rcheat/actions/workflows/build-test.yml/badge.svg)](https://github.com/handy-sun/rcheat/actions/workflows/build-test.yml)
 ![latest_release](https://img.shields.io/github/v/tag/handy-sun/rcheat?label=release)
+[![Crates.io](https://img.shields.io/crates/v/rcheat.svg)](https://crates.io/crates/rcheat)
 ![Linux](https://img.shields.io/badge/-Linux-grey?logo=linux)
 
 > *Get/modify simple variable's value in another Linux running process*
@@ -43,8 +44,11 @@ sudo /path/to/rcheat -h
 
 ## 4. Todo
 
-- [ ] use `lua` to custom format the match entry
+- [ ] use log crate such as `log/envlogger`
+- [ ] regex replace String.contain
+- [ ] parse .debug* section
+- [ ] use config.toml to reduce some inputs
+- [ ] use `lua` to customized output
 - [ ] search pid by process name (like linux command: `pidof/pgrep`)
 - [x] if match more than 1 entry name, ask for which one to select
 - [x] demangle symbols
-- [ ] analysis the elf compiled by `golang` 
