@@ -26,8 +26,11 @@ shadow-rs = "^0"
 anyhow = "1.0.0"
 bytes = "^1.7"
 goblin = "0.8.0"
-cpp_demangle = "0.4.4"
-rustc-demangle = "0.1.*"
+# cpp_demangle = "0.4.4"
+# rustc-demangle = "0.1.*"
+# symbolic = { version = "12.11.0", features = ["demangle"] }
+symbolic-demangle = { version = "12.11.0", default-features = false, features = ["cpp", "rust",]}
+symbolic-common = { version = "12.11.0" }
 ansi_term = "0.12.1"
 
 [target.'cfg(unix)'.dependencies]

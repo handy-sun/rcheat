@@ -8,7 +8,14 @@ use goblin::elf::{header, sym, Elf, SectionHeaders};
 use goblin::strtab::Strtab;
 use goblin::{Hint, Object};
 
+use symbolic_common::{Language, Name};
+use symbolic_demangle::{Demangle, DemangleOptions};
+
+// use std::borrow::Cow;
+
 const MAGIC_LEN: usize = 16;
+
+const DEM_OPT: DemangleOptions = DemangleOptions::name_only().parameters(true);
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct SymEntry {
@@ -103,22 +110,28 @@ impl<'a> ElfMgr<'a> {
         }
 
         let sym_symbol = strtab.get_at(sym.st_name).unwrap_or("BAD NAME");
-        let (is_demangled, dem_name) = match try_multi_demangle(sym_symbol) {
-            Ok(origin) => (true, origin),
-            Err(_multi_err) => (false, "".to_string()),
-        };
+        // let (is_demangled, dem_name) = match try_multi_demangle(sym_symbol) {
+        //     Ok(origin) => (true, origin),
+        //     Err(_multi_err) => (false, String::from(sym_symbol)),
+        // };
+
+        let name = Name::from(sym_symbol);
+        let dem_name = name.try_demangle(DEM_OPT);
+        let is_known = name.detect_language() != Language::Unknown;
         let shn = shndx_to_str(sym.st_shndx, &self.elf.section_headers, &self.elf.shdr_strtab);
 
-        if is_demangled
-            && sym.st_size > 0
+        if sym.st_size > 0
             && (shn.starts_with(".bss(") || shn.starts_with(".rodata(") || shn.starts_with(".data"))
-            && !(dem_name.contains("(anonymous namespace)")
-                // || dem_name.contains("@GLIBC")
-                || dem_name.contains("std::")
-                || dem_name.starts_with("__gnu_")
-                || dem_name.starts_with("__cxxabiv")
-                || dem_name.starts_with("guard variable")
-                || dem_name.ends_with(")::__func__"))
+            && (!is_known
+                || !(dem_name.contains("(anonymous namespace)")
+                    || dem_name.contains("std::")
+                    || dem_name.contains("@GLIBC")
+                    || dem_name.contains("_IO_stdin_used")
+                    || dem_name.starts_with("._anon_")
+                    || dem_name.starts_with("__gnu_")
+                    || dem_name.starts_with("__cxxabiv")
+                    || dem_name.starts_with("guard variable")
+                    || dem_name.ends_with(")::__func__")))
         {
             #[cfg(debug_assertions)]
             eprintln!(
@@ -127,14 +140,14 @@ impl<'a> ElfMgr<'a> {
                 sym.st_size,
                 shn,
                 dem_name,
-                sym_symbol
+                name.detect_language().name()
             );
             if dem_name.contains(keyword) || keyword.is_empty() {
                 return Some(SymEntry {
                     obj_addr: sym.st_value,
                     obj_size: sym.st_size,
                     bind_type: sym.st_bind(),
-                    origin_name: dem_name.clone(),
+                    origin_name: dem_name.to_string(),
                     section: shn.clone(),
                 });
             }
@@ -147,14 +160,14 @@ fn shndx_to_str(idx: usize, shdrs: &SectionHeaders, strtab: &Strtab) -> String {
     if idx == 0 {
         String::from("")
     } else if let Some(shdr) = shdrs.get(idx) {
-        if let Some(link_name) = strtab
-            .get_at(shdr.sh_name)
-            .map(|_str| match try_multi_demangle(_str) {
-                Ok(origin) => origin,
-                Err(_) => _str.to_string(),
-            })
+        // if let Some(link_name) = strtab
+        //     .get_at(shdr.sh_name)
+        //     .map(|_str| match try_multi_demangle(_str) {
+        //         Ok(origin) => origin,
+        //         Err(_) => _str.to_string(),
+        //     })
         // TODO: need try_multi_demangle?
-        {
+        if let Some(link_name) = strtab.get_at(shdr.sh_name) {
             format!("{}({})", link_name, idx)
         } else {
             format!("BAD_IDX={}", shdr.sh_name)
@@ -167,15 +180,11 @@ fn shndx_to_str(idx: usize, shdrs: &SectionHeaders, strtab: &Strtab) -> String {
     }
 }
 
-fn try_multi_demangle(s: &str) -> Result<String, Error> {
-    match cpp_demangle::Symbol::new(s) {
-        Ok(_symbol) => Ok(_symbol.to_string()),
-        Err(cpp_dem_err) => match rustc_demangle::try_demangle(s) {
-            Ok(demangled) => Ok(demangled.to_string()),
-            Err(rust_dem_err) => Err(anyhow!("`cpp:{:?}, rust:{:?}`", cpp_dem_err, rust_dem_err)),
-        },
-    }
-}
+// fn try_multi_demangle(s: &'_ str) -> (Cow<'_, str>, Cow<'_, Language>) {
+//     let name = Name::from(s);
+//     let cow_str = name.try_demangle(DEM_OPT);
+//     (cow_str, Cow::Borrowed(name.detect_language()))
+// }
 
 /// the slice's len better greater than 0
 fn loop_inquire_index<T>(entry_slice: &[T]) -> Result<T, Error>
@@ -219,5 +228,24 @@ where
             }
             Err(std_error) => println!("Failed to read line: {:?}", std_error),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use symbolic_common::{Language, Name};
+    use symbolic_demangle::{Demangle, DemangleOptions};
+
+    const DEM_OPT: DemangleOptions = DemangleOptions::complete();
+    #[test]
+    fn detect_language() {
+        assert_eq!(
+            Name::from("_ZN7TdhData12pcmStateListE").demangle(DEM_OPT),
+            Some("TdhData::pcmStateList".to_string())
+        );
+        assert_eq!(
+            Name::from("_ZN7TdhData12pcmStateListE").detect_language(),
+            Language::Cpp
+        );
     }
 }
