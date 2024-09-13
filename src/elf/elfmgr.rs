@@ -81,7 +81,7 @@ impl<'a> ElfMgr<'a> {
             2.. => {
                 for (i, emtry) in emtry_vec.iter().enumerate() {
                     println!(
-                        "{}: {:40} | {:7} | {:6} | {}",
+                        "{:3}: {:40} | {:7} | {:6} | {}",
                         i,
                         emtry.origin_name,
                         emtry.obj_size,
@@ -103,18 +103,19 @@ impl<'a> ElfMgr<'a> {
         }
 
         let sym_symbol = strtab.get_at(sym.st_name).unwrap_or("BAD NAME");
-        let (is_demangled, dem_name) = match try_multi_demangle(sym_symbol) {
+        let (_is_demangled, dem_name) = match try_multi_demangle(sym_symbol) {
             Ok(origin) => (true, origin),
-            Err(_multi_err) => (false, "".to_string()),
+            Err(_) => (false, sym_symbol.to_string()),
         };
         let shn = shndx_to_str(sym.st_shndx, &self.elf.section_headers, &self.elf.shdr_strtab);
 
-        if is_demangled
-            && sym.st_size > 0
+        if sym.st_size > 0
             && (shn.starts_with(".bss(") || shn.starts_with(".rodata(") || shn.starts_with(".data"))
             && !(dem_name.contains("(anonymous namespace)")
-                // || dem_name.contains("@GLIBC")
+                || dem_name.contains("@GLIBC")
                 || dem_name.contains("std::")
+                || dem_name.contains("_IO_stdin_used")
+                || dem_name.starts_with("._anon_")
                 || dem_name.starts_with("__gnu_")
                 || dem_name.starts_with("__cxxabiv")
                 || dem_name.starts_with("guard variable")
@@ -147,14 +148,7 @@ fn shndx_to_str(idx: usize, shdrs: &SectionHeaders, strtab: &Strtab) -> String {
     if idx == 0 {
         String::from("")
     } else if let Some(shdr) = shdrs.get(idx) {
-        if let Some(link_name) = strtab
-            .get_at(shdr.sh_name)
-            .map(|_str| match try_multi_demangle(_str) {
-                Ok(origin) => origin,
-                Err(_) => _str.to_string(),
-            })
-        // TODO: need try_multi_demangle?
-        {
+        if let Some(link_name) = strtab.get_at(shdr.sh_name) {
             format!("{}({})", link_name, idx)
         } else {
             format!("BAD_IDX={}", shdr.sh_name)
