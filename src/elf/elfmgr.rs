@@ -11,9 +11,17 @@ use goblin::{Hint, Object};
 use symbolic_common::Name;
 use symbolic_demangle::{Demangle, DemangleOptions};
 
+use regex::Regex;
+
+use once_cell::sync::Lazy;
+
 const MAGIC_LEN: usize = 16;
 
 const DEM_OPT: DemangleOptions = DemangleOptions::name_only().parameters(true);
+
+static RE_VAR: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(anonymous namespace)|@GLIBC|std::|_IO_stdin_used|^\._|^__gnu_|^__cxxabiv|^guard variable|\)::__func__$|\.\d+$").unwrap()
+});
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct SymEntry {
@@ -79,20 +87,19 @@ impl<'a> ElfMgr<'a> {
 
         let emtry_vec: Vec<SymEntry> = map_iter.collect();
         println!("[{:?}] Time of `filter_symbol`", start.elapsed());
-        println!("Matched count: {}", emtry_vec.len());
+
         match emtry_vec.len() {
             0 => Err(anyhow!("cannot find")),
-            1 => Ok(emtry_vec.first().unwrap().clone()),
+            1 => {
+                let entry = emtry_vec.first().unwrap().clone();
+                println!("Matched var: {}", entry.origin_name);
+                Ok(entry)
+            }
             2.. => {
+                println!("Matched count: {}", emtry_vec.len());
+                println!("index: {:40} | var_size(B)", "var_name");
                 for (i, emtry) in emtry_vec.iter().enumerate() {
-                    println!(
-                        "{:3}: {:40} | {:7} | {:6} | {}",
-                        i,
-                        emtry.origin_name,
-                        emtry.obj_size,
-                        sym::bind_to_str(emtry.bind_type),
-                        emtry.section,
-                    );
+                    println!("{:5}: {:40} | {:7}", i, emtry.origin_name, emtry.obj_size,);
                 }
                 loop_inquire_index(&emtry_vec)
             }
@@ -112,36 +119,33 @@ impl<'a> ElfMgr<'a> {
         let dem_name = name.try_demangle(DEM_OPT);
         let shn = shndx_to_str(sym.st_shndx, &self.elf.section_headers, &self.elf.shdr_strtab);
 
-        if sym.st_size > 0
-            && (shn.starts_with(".bss(") || shn.starts_with(".rodata(") || shn.starts_with(".data"))
-            && !(dem_name.contains("(anonymous namespace)")
-                || dem_name.contains("@GLIBC")
-                || dem_name.contains("std::")
-                || dem_name.contains("_IO_stdin_used")
-                || dem_name.starts_with("._anon_")
-                || dem_name.starts_with("__gnu_")
-                || dem_name.starts_with("__cxxabiv")
-                || dem_name.starts_with("guard variable")
-                || dem_name.ends_with(")::__func__"))
+        if sym.st_size == 0
+            || (!shn.starts_with(".bss(") && !shn.starts_with(".rodata(") && !shn.starts_with(".data"))
         {
-            #[cfg(debug_assertions)]
-            eprintln!(
-                "{:6} | {:5} | {:12} | {:40} | {}",
-                sym::bind_to_str(sym.st_bind()),
-                sym.st_size,
-                shn,
-                dem_name,
-                sym_symbol
-            );
-            if dem_name.contains(keyword) || keyword.is_empty() {
-                return Some(SymEntry {
-                    obj_addr: sym.st_value,
-                    obj_size: sym.st_size,
-                    bind_type: sym.st_bind(),
-                    origin_name: dem_name.to_string(),
-                    section: shn.clone(),
-                });
-            }
+            return None;
+        }
+
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "{:6} | {:5} | {:16} | {:40} | {}",
+            sym::bind_to_str(sym.st_bind()),
+            sym.st_size,
+            shn,
+            dem_name,
+            sym_symbol
+        );
+        if RE_VAR.is_match(&dem_name) {
+            return None;
+        }
+
+        if dem_name.contains(keyword) || keyword.is_empty() {
+            return Some(SymEntry {
+                obj_addr: sym.st_value,
+                obj_size: sym.st_size,
+                bind_type: sym.st_bind(),
+                origin_name: dem_name.to_string(),
+                section: shn.clone(),
+            });
         }
         None
     }
@@ -206,5 +210,21 @@ where
             }
             Err(std_error) => println!("Failed to read line: {:?}", std_error),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn check_regex_of_var() {
+        assert!(RE_VAR.is_match("completed.8061"));
+        assert!(RE_VAR.is_match("._93"));
+        assert!(RE_VAR.is_match("._anon_"));
+        assert!(RE_VAR.is_match("..(anonymous namespace))abc"));
+        assert!(RE_VAR.is_match("_IO_stdin_used"));
+        assert!(RE_VAR.is_match("__gnu_@GLIBC"));
+        assert!(RE_VAR.is_match("Cm::init()::__func__"));
     }
 }

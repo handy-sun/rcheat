@@ -116,9 +116,10 @@ Then will get the output about all global variables about this program
 [205.405µs] Time of `parse elf`
 [497.685µs] Time of `filter_symbol`
 Matched count: 3
-  0: sc_sig_arr                               |      60 | GLOBAL | .rodata(16)
-  1: structure                                |       8 | GLOBAL | .bss(25)
-  2: techs                                    |      21 | GLOBAL | .rodata(16)
+index: var_name                                 | var_size(B)
+    0: sc_sig_arr                               |      60
+    1: structure                                |       8
+    2: techs                                    |      21
 Please input index to choose the var(default is 0):
 ```
 
@@ -129,15 +130,12 @@ Input `2` and `Enter`, you will see the byte value and ascii content of this var
 0x0010: 770d 3231 00                            ┃ w.21.
 ```
 
-You also can determine the total name or partly keyword of the variable with option `-k`
+You also can specify the total name or partly keyword of the variable with option `-k`
 
 ```sh
 sudo rcheat -p 3754914 -k sig_arr
 ```
 ```
-exe_path: /home/qi/ccpp/rcheat/examples/build-x86_64/onlyc
-[680.065µs] Time of `parse elf`
-[827.286µs] Time of `filter_symbol`
 ...
 
 0x0000: 2000 0000 0000 4855 5000 0000 494e 5400 ┃  .....HUP...INT.
