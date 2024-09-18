@@ -11,6 +11,7 @@
 ------
 
 <!-- vscode-markdown-toc -->
+## Table of Contents
 * 1. [Installation](#Installation)
 	* 1.1. [Via cargo](#Viacargo)
 	* 1.2. [Build src](#Buildsrc)
@@ -148,11 +149,12 @@ sudo rcheat -p 3754914 -k sig_arr
 
 *The development plan of the project and the functions to be implemented*
 
+- [ ] parse `.debug*` section
+- [ ] use lib like `table` to format matrix table data
 - [ ] use log crate such as `log/env_logger` etc.
-- [ ] regex replace String.contain
-- [ ] parse .debug* section
 - [ ] use config.toml to reduce some inputs
 - [ ] use `lua` to customized output
 - [ ] search pid by process name (like linux command: `pidof/pgrep`)
+- [x] regex replace String.contain
 - [x] if match more than 1 entry name, ask for which one to select
 - [x] demangle symbols

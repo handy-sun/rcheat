@@ -23,6 +23,7 @@ static RE_VAR: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(anonymous namespace)|@GLIBC|std::|_IO_stdin_used|^\._|^__gnu_|^__cxxabiv|^guard variable|\)::__func__$|\.\d+$").unwrap()
 });
 
+/// Symbol (.symtab) entry only include the info we needed
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct SymEntry {
     obj_addr: u64,
@@ -85,23 +86,23 @@ impl<'a> ElfMgr<'a> {
             .iter()
             .filter_map(|sym| self.filter_symbol(sym, strtab, keyword));
 
-        let emtry_vec: Vec<SymEntry> = map_iter.collect();
+        let entry_vec: Vec<SymEntry> = map_iter.collect();
         println!("[{:?}] Time of `filter_symbol`", start.elapsed());
 
-        match emtry_vec.len() {
+        match entry_vec.len() {
             0 => Err(anyhow!("cannot find")),
             1 => {
-                let entry = emtry_vec.first().unwrap().clone();
+                let entry = entry_vec.first().unwrap().clone();
                 println!("Matched var: {}", entry.origin_name);
                 Ok(entry)
             }
             2.. => {
-                println!("Matched count: {}", emtry_vec.len());
+                println!("Matched count: {}", entry_vec.len());
                 println!("index: {:40} | var_size(B)", "var_name");
-                for (i, emtry) in emtry_vec.iter().enumerate() {
-                    println!("{:5}: {:40} | {:7}", i, emtry.origin_name, emtry.obj_size,);
+                for (i, entry) in entry_vec.iter().enumerate() {
+                    println!("{:5}: {:40} | {:7}", i, entry.origin_name, entry.obj_size);
                 }
-                loop_inquire_index(&emtry_vec)
+                loop_inquire_index(&entry_vec)
             }
         }
     }
@@ -216,6 +217,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use symbolic_common::Language;
 
     #[test]
     fn check_regex_of_var() {
@@ -226,5 +228,33 @@ mod test {
         assert!(RE_VAR.is_match("_IO_stdin_used"));
         assert!(RE_VAR.is_match("__gnu_@GLIBC"));
         assert!(RE_VAR.is_match("Cm::init()::__func__"));
+    }
+
+    #[test]
+    fn demangle_and_detect_language() {
+        // format: (&str: mangled name, &str: demangled name, enum[repr(u32)]: Language)
+        let tuple_arr = [
+            (
+                "_ZN7simdutf12_GLOBAL__N_16tables13utf8_to_utf16L12utf8bigindexE",
+                "simdutf::(anonymous namespace)::tables::utf8_to_utf16::utf8bigindex",
+                Language::Cpp,
+            ),
+            (
+                "_ZN7MaiData12statMemArrayE",
+                "MaiData::statMemArray",
+                Language::Rust, // Rust: rust or cpp
+            ),
+            (
+                "simple_arr",
+                "simple_arr",
+                Language::Unknown, // Unknown sometime includes C
+            ),
+        ];
+
+        for tup in tuple_arr {
+            let name = Name::from(tup.0);
+            assert_eq!(name.try_demangle(DEM_OPT), tup.1);
+            assert_eq!(name.detect_language(), tup.2);
+        }
     }
 }
