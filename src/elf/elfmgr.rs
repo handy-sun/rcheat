@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::fs::File;
 use std::io;
 use std::time::Instant;
 
@@ -82,9 +83,17 @@ impl<'a> ElfMgr<'a> {
             return Err(anyhow!("syms is empty"));
         }
 
+        let file;
+        if cfg!(debug_assertions) {
+            file = File::create("/tmp/elf.csv").map_err(|err| anyhow!("Could not create file : {}", err))?;
+        } else {
+            file = File::open("/dev/null").map_err(|err| anyhow!("Could not open null : {}", err))?;
+        }
+        let mut writer = io::BufWriter::new(file);
+
         let map_iter = syms
             .iter()
-            .filter_map(|sym| self.filter_symbol(sym, strtab, keyword));
+            .filter_map(|sym| self.filter_symbol(sym, strtab, keyword, &mut writer));
 
         let entry_vec: Vec<SymEntry> = map_iter.collect();
         println!("[{:?}] Time of `filter_symbol`", start.elapsed());
@@ -98,16 +107,22 @@ impl<'a> ElfMgr<'a> {
             }
             2.. => {
                 println!("Matched count: {}", entry_vec.len());
-                println!("index: {:40} | var_size(B)", "var_name");
+                println!("index: {:50} | var_size(B)", "var_name");
                 for (i, entry) in entry_vec.iter().enumerate() {
-                    println!("{:5}: {:40} | {:7}", i, entry.origin_name, entry.obj_size);
+                    println!("{:5}: {:50} | {}", i, entry.origin_name, entry.obj_size);
                 }
                 loop_inquire_index(&entry_vec)
             }
         }
     }
 
-    fn filter_symbol(&self, sym: &sym::Sym, strtab: &Strtab, keyword: &String) -> Option<SymEntry> {
+    fn filter_symbol<W: io::Write>(
+        &self,
+        sym: &sym::Sym,
+        strtab: &Strtab,
+        keyword: &String,
+        _bm_wrt: &mut W,
+    ) -> Option<SymEntry> {
         // filter: LOCAL&OBJECT or GLOBAL&OBJECT
         if sym.st_type() != sym::STT_OBJECT
             || (sym.st_bind() != sym::STB_LOCAL && sym.st_bind() != sym::STB_GLOBAL)
@@ -127,14 +142,21 @@ impl<'a> ElfMgr<'a> {
         }
 
         #[cfg(debug_assertions)]
-        eprintln!(
-            "{:6} | {:5} | {:16} | {:40} | {}",
-            sym::bind_to_str(sym.st_bind()),
-            sym.st_size,
-            shn,
-            dem_name,
-            sym_symbol
-        );
+        _bm_wrt
+            .write_all(
+                format!(
+                    "{} | {} | {} | {} | {}\n",
+                    sym::bind_to_str(sym.st_bind()).chars().next().unwrap_or_default(),
+                    sym.st_size,
+                    shn,
+                    dem_name,
+                    sym_symbol
+                )
+                .as_bytes(),
+            )
+            .map_err(|err| eprintln!("Write all to file Error : {}", err))
+            .unwrap_or_default();
+
         if RE_VAR.is_match(&dem_name) {
             return None;
         }
