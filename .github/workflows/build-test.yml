@@ -61,7 +61,7 @@ jobs:
         with:
           use-cross: ${{ matrix.job.use-cross }}
           command: build
-          args: --target=${{ matrix.job.target }} --verbose
+          args: --target=${{ matrix.job.target }}
 
       - name: Test (unit)
         uses: actions-rs/cargo@v1
@@ -73,11 +73,7 @@ jobs:
       - name: Print binary dependences
         shell: bash
         run: |
-          # case ${{ matrix.job.target }} in
-          #   *apple) echo "donnot check apple dependences" ;;
-          # esac;
-
-          bin_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml)"
+          bin_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
           bin_path="target/${{ matrix.job.target }}/debug/${bin_name}"
 
           if [[ -e "${bin_path}" ]]; then 
@@ -86,7 +82,12 @@ jobs:
             elif command -v otool &>/dev/null; then
               otool -L ${bin_path} || true
             fi
-          
+
             echo
+            ls -l ${bin_path} || true 
             file ${bin_path} || true
+          fi
+
+          if command -v perl &>/dev/null; then
+            perl -v | head -n5 || true
           fi

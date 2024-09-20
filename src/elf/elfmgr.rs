@@ -91,9 +91,17 @@ impl<'a> ElfMgr<'a> {
         }
         let mut writer = io::BufWriter::new(file);
 
+        let (is_empty_key, re_key) = match Regex::new(&keyword) {
+            Ok(re) => (keyword.is_empty(), re),
+            Err(err) => {
+                eprintln!("Invalid regular expression {}: {}, donnot use", keyword, err);
+                (true, Regex::new("")?)
+            }
+        };
+
         let map_iter = syms
             .iter()
-            .filter_map(|sym| self.filter_symbol(sym, strtab, keyword, &mut writer));
+            .filter_map(|sym| self.filter_symbol(sym, strtab, is_empty_key, &re_key, &mut writer));
 
         let entry_vec: Vec<SymEntry> = map_iter.collect();
         println!("[{:?}] Time of `filter_symbol`", start.elapsed());
@@ -120,7 +128,8 @@ impl<'a> ElfMgr<'a> {
         &self,
         sym: &sym::Sym,
         strtab: &Strtab,
-        keyword: &String,
+        is_empty_key: bool,
+        re_key: &Regex,
         _bm_wrt: &mut W,
     ) -> Option<SymEntry> {
         // filter: LOCAL&OBJECT or GLOBAL&OBJECT
@@ -161,7 +170,7 @@ impl<'a> ElfMgr<'a> {
             return None;
         }
 
-        if dem_name.contains(keyword) || keyword.is_empty() {
+        if is_empty_key || re_key.is_match(&dem_name) {
             return Some(SymEntry {
                 obj_addr: sym.st_value,
                 obj_size: sym.st_size,
@@ -250,11 +259,14 @@ mod test {
         assert!(RE_VAR.is_match("_IO_stdin_used"));
         assert!(RE_VAR.is_match("__gnu_@GLIBC"));
         assert!(RE_VAR.is_match("Cm::init()::__func__"));
+        // empty &str
+        let opt_re = Regex::new("");
+        assert!(opt_re.is_ok());
     }
 
     #[test]
     fn demangle_and_detect_language() {
-        // format: (&str: mangled name, &str: demangled name, enum[repr(u32)]: Language)
+        // format tuple: (&str: mangled name, &str: demangled name(expect), enum[repr(u32)]: Language)
         let tuple_arr = [
             (
                 "_ZN7simdutf12_GLOBAL__N_16tables13utf8_to_utf16L12utf8bigindexE",
@@ -271,6 +283,11 @@ mod test {
                 "simple_arr",
                 Language::Unknown, // Unknown sometime includes C
             ),
+            (
+                "_Z11splitStringRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEc.cold",
+                "splitString(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, char) [clone .cold]",
+                Language::Cpp
+            )
         ];
 
         for tup in tuple_arr {
