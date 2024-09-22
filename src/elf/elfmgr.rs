@@ -14,6 +14,7 @@ use symbolic_demangle::{Demangle, DemangleOptions};
 
 use regex::Regex;
 
+use crate::elf::DwarfInfoMatcher;
 use once_cell::sync::Lazy;
 
 const MAGIC_LEN: usize = 16;
@@ -44,8 +45,10 @@ impl SymEntry {
     }
 }
 
+#[allow(dead_code)]
 pub struct ElfMgr<'a> {
     elf: Elf<'a>,
+    dw_matcher: DwarfInfoMatcher<'a>,
 }
 
 impl<'a> ElfMgr<'a> {
@@ -60,7 +63,13 @@ impl<'a> ElfMgr<'a> {
         }
 
         match Object::parse(bytes).unwrap() {
-            Object::Elf(val) => Ok(ElfMgr { elf: val }),
+            Object::Elf(val) => Ok(ElfMgr {
+                elf: val,
+                dw_matcher: match DwarfInfoMatcher::parse(bytes) {
+                    Ok(dw) => dw,
+                    Err(_e) => return Err(anyhow!("Parse dwarf-sections failed: {:?}", _e)),
+                },
+            }),
             _ => Err(anyhow!("Object format not support")),
         }
     }
@@ -77,21 +86,18 @@ impl<'a> ElfMgr<'a> {
         let start = Instant::now();
         let strtab = &self.elf.strtab;
         let syms = self.elf.syms.to_vec();
-        // let dyn_strtab = &self.elf.dynstrtab;
-        // let dynsyms = self.elf.dynsyms.to_vec();
         if syms.is_empty() {
             return Err(anyhow!("syms is empty"));
         }
 
-        let file;
-        if cfg!(debug_assertions) {
-            file = File::create("/tmp/elf.csv").map_err(|err| anyhow!("Could not create file : {}", err))?;
+        let file = if cfg!(debug_assertions) {
+            File::create("/tmp/elf.csv").map_err(|err| anyhow!("Could not create file : {}", err))?
         } else {
-            file = File::open("/dev/null").map_err(|err| anyhow!("Could not open null : {}", err))?;
-        }
+            File::open("/dev/null").map_err(|err| anyhow!("Could not open null : {}", err))?
+        };
         let mut writer = io::BufWriter::new(file);
 
-        let (is_empty_key, re_key) = match Regex::new(&keyword) {
+        let (is_empty_key, re_key) = match Regex::new(keyword) {
             Ok(re) => (keyword.is_empty(), re),
             Err(err) => {
                 eprintln!("Invalid regular expression {}: {}, donnot use", keyword, err);

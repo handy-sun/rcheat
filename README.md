@@ -31,7 +31,7 @@
 ###  1.1. <a name='Viacargo'></a>Via cargo
 
 <details>
-<summary>The way to install cargo</summary>
+<summary>Some ways to install cargo</summary>
 
 - can be obtained using [rustup](https://rust-lang.github.io/rustup/)(Recommond)
 - use Linux package management(e.g. apt, yum, dnf, pacman)
