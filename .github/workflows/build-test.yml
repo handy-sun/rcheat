@@ -9,7 +9,7 @@ on: [ push, pull_request]
 
 jobs:
   build:
-    name: ${{ matrix.job.os }} (${{ matrix.job.target }})
+    name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
@@ -73,7 +73,7 @@ jobs:
       - name: Print binary dependences
         shell: bash
         run: |
-          bin_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          bin_name="$(perl -nle 'if (/^\[\[bin\]\]/) { $found = 1; next; } if ($found && /^name\s*=\s*"([^"]+)"/) { print $1; $found = 0; }' Cargo.toml)"
           bin_path="target/${{ matrix.job.target }}/debug/${bin_name}"
 
           if [[ -e "${bin_path}" ]]; then 
@@ -84,10 +84,7 @@ jobs:
             fi
 
             echo
-            ls -l ${bin_path} || true 
+            ls --color=auto -lF ${bin_dir} | grep --color=auto -e '*$' || true
+            echo
             file ${bin_path} || true
-          fi
-
-          if command -v perl &>/dev/null; then
-            perl -v | head -n5 || true
           fi
