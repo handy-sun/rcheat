@@ -27,7 +27,7 @@ impl<'a> gimli::read::Relocate for &'a RelocMap {
     }
 }
 
-// The reader type that will be stored in `Dwarf` and `DwarfPackage`.
+// The custom reader type that will be stored in `Dwarf` and `DwarfPackage`.
 // If you don't need relocations, you can use `gimli::EndianSlice` directly.
 type CusReader<'d> = gimli::RelocateReader<gimli::EndianSlice<'d, gimli::RunTimeEndian>, &'d RelocMap>;
 
@@ -65,7 +65,7 @@ impl<'a> DwarfInfoMatcher<'a> {
         })
     }
 
-    pub fn dump_deubg_info(&self, name: &str) -> Result<(), Box<dyn error::Error>> {
+    pub fn infer_var_type(&self, demangle: &str, mangle: &str) -> Result<String, Box<dyn error::Error>> {
         // Create `Reader`s for all of the sections and do preliminary parsing.
         // Alternatively, we could have used `Dwarf::load` with an owned type such as `EndianRcSlice`.
         let dwarf = self
@@ -75,41 +75,64 @@ impl<'a> DwarfInfoMatcher<'a> {
 
         while let Some(header) = iter.next()? {
             println!(
-                "Unit at <.debug_info+0x{:x}>",
+                "Unit at <.debug_info {:#x}>",
                 header.offset().as_debug_info_offset().unwrap().0
             );
             let unit = dwarf.unit(header)?;
             let unit_ref = unit.unit_ref(&dwarf);
-            dump_unit(unit_ref, name)?;
+            if let Ok(at_name) = filter_die_in_unit(unit_ref, demangle, mangle) {
+                if !at_name.is_empty() {
+                    return Ok(at_name.into_owned());
+                }
+            }
         }
-        Ok(())
+        Err("Not find in debug".into())
     }
 }
 
 // Iterate over the Debugging Information Entries (DIEs) in the unit.
-fn dump_unit(unit: gimli::UnitRef<CusReader>, name: &str) -> Result<(), gimli::Error> {
+fn filter_die_in_unit<'a>(
+    unit: gimli::UnitRef<'a, CusReader<'a>>,
+    demangle: &'a str,
+    mangle: &'a str,
+) -> Result<Cow<'a, str>, gimli::Error> {
     let mut entries = unit.entries();
     while let Some((_delta_depth, entry)) = entries.next_dfs()? {
-        if entry.tag() == gimli::DW_TAG_member {
-            // println!("<{}><{:06x}> {}", depth, entry.offset().0, entry.tag());
-            let mut attrs = entry.attrs();
-            let mut member = String::with_capacity(128);
-            let mut is_match = false;
-            while let Some(attr) = attrs.next()? {
-                member += format!("  {}: {:?}", attr.name(), attr.value()).as_str();
-                if let Ok(s) = unit.attr_string(attr.value()) {
-                    let dbg_str = s.to_string_lossy()?;
-                    if dbg_str == name {
-                        member += format!(" {}", dbg_str).as_str();
-                        is_match = true;
+        match entry.tag() {
+            gimli::DW_TAG_variable => {
+                if let Some(attr_val) = entry.attr_value(gimli::DW_AT_name)? {
+                    let reloc_reader_at = unit.attr_string(attr_val)?;
+                    let real_at_name = reloc_reader_at.to_string_lossy()?;
+                    if demangle.contains(&*real_at_name) {
+                        if mangle.is_empty() {
+                            return Ok(Cow::Owned(real_at_name.into_owned()));
+                        }
+
+                        if let Some(linkage_val) = entry.attr_value(gimli::DW_AT_linkage_name)? {
+                            let reloc_reader_at_link = unit.attr_string(linkage_val)?;
+                            let linkage_name = reloc_reader_at_link.to_string_lossy()?;
+                            if linkage_name == mangle {
+                                return Ok(Cow::Owned(real_at_name.into_owned()));
+                            }
+                        }
+                    } else {
+                        println!("var_at: {}", real_at_name);
                     }
                 }
-                member += "\n";
             }
-            if is_match {
-                println!("{member}");
-            }
+            gimli::DW_TAG_typedef => {}
+            gimli::DW_TAG_base_type => {}
+            gimli::DW_TAG_array_type => {}
+            gimli::DW_TAG_structure_type => {}
+            gimli::DW_TAG_pointer_type => {}
+            _ => (),
         }
     }
-    Ok(())
+    Ok(Cow::Borrowed(""))
 }
+
+// #[derive(Debug, Clone)]
+// struct DefAndBaseType<'d> {
+//     def_type: read::Attribute<CusReader<'d>>,
+//     base_type: read::Attribute<CusReader<'d>>,
+// }

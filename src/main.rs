@@ -27,7 +27,7 @@ pub struct Args {
     /// Process id to trace
     #[arg(short = 'p', long = "pid", default_value_t = -1)]
     pid: pid_t,
-    /// Keyword of the variable which want to search
+    /// Keyword(or regex expression) of the variable which want to search
     #[arg(short, long, default_value = "")]
     keyword: String,
     /// Format output 'hex' or 'dec'

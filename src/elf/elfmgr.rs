@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io;
@@ -14,8 +15,9 @@ use symbolic_demangle::{Demangle, DemangleOptions};
 
 use regex::Regex;
 
-use crate::elf::DwarfInfoMatcher;
 use once_cell::sync::Lazy;
+
+use crate::elf::DwarfInfoMatcher;
 
 const MAGIC_LEN: usize = 16;
 
@@ -27,15 +29,16 @@ static RE_VAR: Lazy<Regex> = Lazy::new(|| {
 
 /// Symbol (.symtab) entry only include the info we needed
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct SymEntry {
+pub struct SymEntry<'a> {
     obj_addr: u64,
     obj_size: u64,
     bind_type: u8,
     origin_name: String,
+    mangled_name: Cow<'a, str>,
     section: String,
 }
 
-impl SymEntry {
+impl<'a> SymEntry<'a> {
     pub fn obj_addr(&self) -> u64 {
         self.obj_addr
     }
@@ -84,7 +87,6 @@ impl<'a> ElfMgr<'a> {
 
     pub fn select_sym_entry(&self, keyword: &String) -> Result<SymEntry, Error> {
         let start = Instant::now();
-        let strtab = &self.elf.strtab;
         let syms = self.elf.syms.to_vec();
         if syms.is_empty() {
             return Err(anyhow!("syms is empty"));
@@ -107,7 +109,7 @@ impl<'a> ElfMgr<'a> {
 
         let map_iter = syms
             .iter()
-            .filter_map(|sym| self.filter_symbol(sym, strtab, is_empty_key, &re_key, &mut writer));
+            .filter_map(|sym| self.filter_symbol(sym, &self.elf.strtab, is_empty_key, &re_key, &mut writer));
 
         let entry_vec: Vec<SymEntry> = map_iter.collect();
         println!("[{:?}] Time of `filter_symbol`", start.elapsed());
@@ -116,7 +118,11 @@ impl<'a> ElfMgr<'a> {
             0 => Err(anyhow!("cannot find")),
             1 => {
                 let entry = entry_vec.first().unwrap().clone();
-                println!("Matched var: {}", entry.origin_name);
+                println!(
+                    "Matched var: {}, dbg: {:?}",
+                    entry.origin_name,
+                    self.dw_matcher.infer_var_type(&entry.origin_name, keyword)
+                );
                 Ok(entry)
             }
             2.. => {
@@ -130,14 +136,14 @@ impl<'a> ElfMgr<'a> {
         }
     }
 
-    fn filter_symbol<W: io::Write>(
+    fn filter_symbol<'b, W: io::Write>(
         &self,
         sym: &sym::Sym,
-        strtab: &Strtab,
+        strtab: &Strtab<'b>,
         is_empty_key: bool,
         re_key: &Regex,
         _bm_wrt: &mut W,
-    ) -> Option<SymEntry> {
+    ) -> Option<SymEntry<'b>> {
         // filter: LOCAL&OBJECT or GLOBAL&OBJECT
         if sym.st_type() != sym::STT_OBJECT
             || (sym.st_bind() != sym::STB_LOCAL && sym.st_bind() != sym::STB_GLOBAL)
@@ -145,8 +151,8 @@ impl<'a> ElfMgr<'a> {
             return None;
         }
 
-        let sym_symbol = strtab.get_at(sym.st_name).unwrap_or("BAD NAME");
-        let name = Name::from(sym_symbol);
+        let mangled_linkage = strtab.get_at(sym.st_name).unwrap_or("BAD NAME");
+        let name = Name::from(mangled_linkage);
         let dem_name = name.try_demangle(DEM_OPT);
         let shn = shndx_to_str(sym.st_shndx, &self.elf.section_headers, &self.elf.shdr_strtab);
 
@@ -165,7 +171,7 @@ impl<'a> ElfMgr<'a> {
                     sym.st_size,
                     shn,
                     dem_name,
-                    sym_symbol
+                    mangled_linkage
                 )
                 .as_bytes(),
             )
@@ -182,6 +188,7 @@ impl<'a> ElfMgr<'a> {
                 obj_size: sym.st_size,
                 bind_type: sym.st_bind(),
                 origin_name: dem_name.to_string(),
+                mangled_name: Cow::Borrowed(mangled_linkage),
                 section: shn.clone(),
             });
         }
@@ -252,7 +259,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use symbolic_common::Language;
 
