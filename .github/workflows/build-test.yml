@@ -85,7 +85,7 @@ jobs:
             fi
 
             echo
-            ls --color=auto -lF ${bin_dir} | grep --color=auto -e '*$' || true
+            ls --color=auto -lF ${bin_path} | grep --color=auto -e '*$' || true
             echo
             file ${bin_path} || true
           fi

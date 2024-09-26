@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io;
@@ -10,7 +9,7 @@ use goblin::elf::{header, sym, Elf, SectionHeaders};
 use goblin::strtab::Strtab;
 use goblin::{Hint, Object};
 
-use symbolic_common::Name;
+use symbolic_common::{Language, Name};
 use symbolic_demangle::{Demangle, DemangleOptions};
 
 use regex::Regex;
@@ -34,7 +33,7 @@ pub struct SymEntry<'a> {
     obj_size: u64,
     bind_type: u8,
     origin_name: String,
-    mangled_name: Cow<'a, str>,
+    mangled_name: Option<&'a str>,
     section: String,
 }
 
@@ -118,10 +117,12 @@ impl<'a> ElfMgr<'a> {
             0 => Err(anyhow!("cannot find")),
             1 => {
                 let entry = entry_vec.first().unwrap().clone();
-                println!(
+                #[cfg(debug_assertions)]
+                eprintln!(
                     "Matched var: {}, dbg: {:?}",
                     entry.origin_name,
-                    self.dw_matcher.infer_var_type(&entry.origin_name, keyword)
+                    self.dw_matcher
+                        .infer_var_type(&entry.origin_name, entry.mangled_name)
                 );
                 Ok(entry)
             }
@@ -188,7 +189,11 @@ impl<'a> ElfMgr<'a> {
                 obj_size: sym.st_size,
                 bind_type: sym.st_bind(),
                 origin_name: dem_name.to_string(),
-                mangled_name: Cow::Borrowed(mangled_linkage),
+                mangled_name: if name.detect_language() == Language::Unknown {
+                    None
+                } else {
+                    Some(mangled_linkage)
+                },
                 section: shn.clone(),
             });
         }
@@ -261,7 +266,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use symbolic_common::Language;
 
     #[test]
     fn check_regex_of_var() {
