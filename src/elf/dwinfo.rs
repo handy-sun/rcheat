@@ -48,12 +48,14 @@ fn load_section<'d>(object: &object::File<'d>, name: &str) -> Result<CusSection<
     })
 }
 
+// NOTE: This type is for the convenience of `println!()`
+pub type TypeOffset = *const u8;
+pub type UniteError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
 pub struct DwarfInfoMatcher<'a> {
     dwarf_sections: DwarfSections<CusSection<'a>>,
     runtime_endian: gimli::RunTimeEndian,
 }
-
-pub type TypeOffset = usize;
 
 impl<'a> DwarfInfoMatcher<'a> {
     pub fn parse(byte_slice: &'a [u8]) -> Result<Self, Box<dyn error::Error>> {
@@ -72,7 +74,7 @@ impl<'a> DwarfInfoMatcher<'a> {
         &self,
         demangle: &str,
         mangle: Option<&'a str>,
-    ) -> Result<Vec<BTreeSet<TypeOffset>>, Box<dyn error::Error>> {
+    ) -> Result<Vec<BTreeSet<TypeOffset>>, UniteError> {
         // Create `Reader`s for all of the sections and do preliminary parsing.
         // Alternatively, we could have used `Dwarf::load` with an owned type such as `EndianRcSlice`.
         let dwarf = self
@@ -105,28 +107,22 @@ fn filter_die_in_unit<'a>(
     let pick_type_offset = |die: &gimli::DebuggingInformationEntry<CusReader<'a>>,
                             dw_at: gimli::DwAt,
                             target: &str|
-     -> Result<TypeOffset, Box<dyn error::Error>> {
+     -> Result<TypeOffset, UniteError> {
         if let Some(linkage_val) = die.attr_value(dw_at)? {
             let reloc_rd = unit.attr_string(linkage_val)?;
             let at_name = reloc_rd.to_string_lossy()?;
-            // eprintln!(
-            //     "{}: {:?}, offset: {:#x}",
-            //     dw_at.to_string(),
-            //     at_name,
-            //     die.offset().0
-            // );
             if at_name == target {
                 // Compilation Unit version: 5
                 if let Some(type_value) = die.attr_value(gimli::DW_AT_type)? {
                     match type_value {
-                        AttributeValue::UnitRef(unit_off) => Ok(unit_off.0),
+                        AttributeValue::UnitRef(unit_off) => Ok(unit_off.0 as TypeOffset),
                         _s => Err(format!("Found {:?}, expect UnitRef()", _s).into()),
                     }
                 } else {
                     // Compilation Unit version: 4
                     if let Some(spec) = die.attr_value(gimli::DW_AT_specification)? {
                         match spec {
-                            AttributeValue::UnitRef(unit_off) => Ok(unit_off.0),
+                            AttributeValue::UnitRef(unit_off) => Ok(unit_off.0 as TypeOffset),
                             _s => Err(format!("Found {:?}, expect UnitRef()", _s).into()),
                         }
                     } else {
@@ -149,18 +145,15 @@ fn filter_die_in_unit<'a>(
             // if a var donnot have attr: `DW_AT_linkage_name`, means it must be a `C` var
             gimli::DW_TAG_variable => match opt_mangle {
                 Some(mangle) => match pick_type_offset(die, gimli::DW_AT_linkage_name, mangle) {
-                    Ok(t) => {
-                        type_loc_addr.insert(t);
+                    Ok(t_offset) => {
+                        type_loc_addr.insert(t_offset);
                     }
-                    Err(_dyn_err) => {
-                        // if _dyn_err.as_ref().to_string().contains("is none") {
-                        //     eprintln!("Occur: {}", _dyn_err);
-                        // }
-                    }
+                    Err(_dyn_err) => {}
                 },
+                // TODO: need test
                 None => {
-                    if let Ok(t) = pick_type_offset(die, gimli::DW_AT_name, demangle) {
-                        type_loc_addr.insert(t);
+                    if let Ok(t_offset) = pick_type_offset(die, gimli::DW_AT_name, demangle) {
+                        type_loc_addr.insert(t_offset);
                     }
                 }
             },

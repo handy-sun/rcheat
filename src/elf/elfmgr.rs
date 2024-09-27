@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io;
@@ -34,7 +35,7 @@ pub struct SymEntry<'a> {
     bind_type: u8,
     origin_name: String,
     mangled_name: Option<&'a str>,
-    section: String,
+    section: Cow<'a, str>,
 }
 
 impl<'a> SymEntry<'a> {
@@ -137,14 +138,14 @@ impl<'a> ElfMgr<'a> {
         }
     }
 
-    fn filter_symbol<'b, W: io::Write>(
-        &self,
+    fn filter_symbol<'c, 'b: 'c, W: io::Write>(
+        &'b self,
         sym: &sym::Sym,
-        strtab: &Strtab<'b>,
+        strtab: &Strtab<'c>,
         is_empty_key: bool,
         re_key: &Regex,
         _bm_wrt: &mut W,
-    ) -> Option<SymEntry<'b>> {
+    ) -> Option<SymEntry<'c>> {
         // filter: LOCAL&OBJECT or GLOBAL&OBJECT
         if sym.st_type() != sym::STT_OBJECT
             || (sym.st_bind() != sym::STB_LOCAL && sym.st_bind() != sym::STB_GLOBAL)
@@ -157,8 +158,9 @@ impl<'a> ElfMgr<'a> {
         let dem_name = name.try_demangle(DEM_OPT);
         let shn = shndx_to_str(sym.st_shndx, &self.elf.section_headers, &self.elf.shdr_strtab);
 
-        if sym.st_size == 0
-            || (!shn.starts_with(".bss(") && !shn.starts_with(".rodata(") && !shn.starts_with(".data"))
+        // Must in these section: .bss .rodata .data .data.rel.ro
+        if (!shn.starts_with(".bss") && !shn.starts_with(".rodata") && !shn.starts_with(".data"))
+            || sym.st_size == 0
         {
             return None;
         }
@@ -194,27 +196,27 @@ impl<'a> ElfMgr<'a> {
                 } else {
                     Some(mangled_linkage)
                 },
-                section: shn.clone(),
+                section: shn,
             });
         }
         None
     }
 }
 
-fn shndx_to_str(idx: usize, shdrs: &SectionHeaders, strtab: &Strtab) -> String {
+fn shndx_to_str<'a>(idx: usize, shdrs: &'a SectionHeaders, strtab: &'a Strtab) -> Cow<'a, str> {
     if idx == 0 {
-        String::from("")
+        Cow::Borrowed("")
     } else if let Some(shdr) = shdrs.get(idx) {
         if let Some(link_name) = strtab.get_at(shdr.sh_name) {
-            format!("{}({})", link_name, idx)
+            Cow::Borrowed(link_name)
         } else {
-            format!("BAD_IDX={}", shdr.sh_name)
+            Cow::Owned(format!("BAD_SH_NAME_IDX={}", shdr.sh_name))
         }
     } else if idx == 0xfff1 {
         // Associated symbol is absolute.
-        String::from("ABS")
+        Cow::Borrowed("ABS")
     } else {
-        String::from(&format!("BAD_IDX={}", idx))
+        Cow::Owned(format!("BAD_IDX={}", idx))
     }
 }
 
