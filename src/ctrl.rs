@@ -1,6 +1,7 @@
 use crate::ceil_to_multiple;
-use crate::elf::ElfMgr;
+use crate::elf;
 use crate::fmt_dump::*;
+use crate::qpid;
 use crate::AnyError;
 use crate::Args;
 
@@ -8,6 +9,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::{mem, time::Instant};
+
+use clap::{error::ErrorKind, CommandFactory};
 
 use anyhow::{anyhow, Context, Error};
 
@@ -99,20 +102,68 @@ fn restore_process_to_run(tracked_pid: Pid, err: Error) -> AnyError {
     Err(err)
 }
 
-pub fn trace(arg: Args) -> AnyError {
-    let tracked_pid = Pid::from_raw(arg.pid);
-    let exe_path = get_abs_path(arg.pid)?;
+pub fn further_parse(arg: Args) -> AnyError {
+    let pid: pid_t = if arg.name.is_some() && arg.pid.is_some() {
+        Args::command()
+            .error(
+                ErrorKind::ArgumentConflict,
+                "Can't use `--name` and `--pid` together",
+            )
+            .exit();
+    } else if arg.name.is_some() {
+        let start = Instant::now();
+        let proc_attr_vec: Vec<_> = qpid::matched_pids_if_name_contains(arg.name.unwrap().as_str()).collect();
+        println!("[{:?}] Time of `query pid`", start.elapsed());
+        match proc_attr_vec.len() {
+            0 => return Err(anyhow!("Cannot find the target process")),
+            1 => {
+                println!("Matched {:?}", &proc_attr_vec[0]);
+                proc_attr_vec[0].pid
+            }
+            2.. => {
+                println!("Matched count: {}", proc_attr_vec.len());
+                for (i, entry) in proc_attr_vec.iter().enumerate() {
+                    println!("{:2}: {:?}", i, entry);
+                }
+                elf::loop_inquire_index(&proc_attr_vec)?.pid
+            }
+        }
+    } else if arg.pid.is_some() {
+        let temp_pid = arg.pid.unwrap();
+        // TODO: get_max_pid from /proc/sys/kernel/pid_max
+        if temp_pid <= 1 {
+            return Err(anyhow!("Input's pid: {} is illegal!", arg.pid.unwrap()));
+        }
+        temp_pid
+    } else {
+        Args::command()
+            .error(
+                ErrorKind::MissingRequiredArgument,
+                "Choose one of `--name` and `--pid`",
+            )
+            .exit();
+    };
+
+    trace(
+        pid,
+        arg.keyword.unwrap_or_default(),
+        arg.format.unwrap_or("hex".to_owned()),
+    )
+}
+
+pub fn trace(pid: pid_t, keyword: String, format: String) -> AnyError {
+    let tracked_pid = Pid::from_raw(pid);
+    let exe_path = get_abs_path(pid)?;
     println!("exe_path: {}", &exe_path);
 
     let elf_bytes =
         std::fs::read(&exe_path).map_err(|err| anyhow!("Problem reading file {:?}: {}", &exe_path, err))?;
 
     let start = Instant::now();
-    // let elf_data = match_sym_entry(&elf_bytes, &arg.keyword)?;
-    let elf_mgr = ElfMgr::prase_from(&elf_bytes)?;
+    let elf_mgr = elf::ElfMgr::prase_from(&elf_bytes)?;
     println!("[{:?}] Time of `parse elf`", start.elapsed());
 
-    let entry = elf_mgr.select_sym_entry(&arg.keyword)?;
+    let entry = elf_mgr.select_sym_entry(&keyword)?;
 
     let entry_addr = if elf_mgr.is_exec_elf() {
         entry.obj_addr()
@@ -189,7 +240,7 @@ pub fn trace(arg: Args) -> AnyError {
 
     println!("[{:?}] Time of `trace and peek`", start.elapsed());
     if let Some(bytes_ref) = peek_buf.get(..) {
-        let out_content = if arg.format == "dec" {
+        let out_content = if format == "dec" {
             dump_to_dec_content(bytes_ref)
         } else {
             dump_to_hex_content(bytes_ref)
@@ -208,19 +259,19 @@ mod tests {
     #[test]
     fn func_get_base_addr() {
         let exe_abs_path = "/usr/bin/test1";
-        let contents = "
+        let contents = b"
 00400000-004ac000 r-xp 00000000 08:02 8918620   /usr/bin/test1
 006ab000-006ac000 r--p 000ab000 08:02 8918620   /usr/bin/test1
 006ac000-006b2000 rw-p 000ac000 08:02 8918620   /usr/bin/test1
 0092f000-00a9b000 rw-p 00000000 00:00 0         [heap]";
-        let buf_rdr = BufReader::new(contents.as_bytes());
+        let buf_rdr = BufReader::new(contents.as_ref());
         assert_eq!(get_base_addr(buf_rdr, exe_abs_path).unwrap_or_default(), 0x400000);
 
         let exe_abs_path = "/usr/bin/test2";
-        let contents = "
+        let contents = b"
 7fc5f7864000-7fc5f7874000 r-xp 00000000 08:02 8918670 /usr/lib64/libtest
 7fc5f7874000-7fc5f7a73000 ---p 00010000 08:02 8918670 /usr/lib64/libtest";
-        let buf_rdr = BufReader::new(contents.as_bytes());
+        let buf_rdr = BufReader::new(contents.as_ref());
         assert!(!get_base_addr(buf_rdr, exe_abs_path).is_ok());
     }
 

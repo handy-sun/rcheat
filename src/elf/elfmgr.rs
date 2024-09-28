@@ -115,7 +115,7 @@ impl<'a> ElfMgr<'a> {
         println!("[{:?}] Time of `filter_symbol`", start.elapsed());
 
         match entry_vec.len() {
-            0 => Err(anyhow!("cannot find")),
+            0 => Err(anyhow!("Cannot find")),
             1 => {
                 let entry = entry_vec.first().unwrap().clone();
                 #[cfg(debug_assertions)]
@@ -129,7 +129,7 @@ impl<'a> ElfMgr<'a> {
             }
             2.. => {
                 println!("Matched count: {}", entry_vec.len());
-                println!("index: {:50} | var_size(B)", "var_name");
+                println!("Index: {:50} | var_size(B)", "var_name");
                 for (i, entry) in entry_vec.iter().enumerate() {
                     println!("{:5}: {:50} | {}", i, entry.origin_name, entry.obj_size);
                 }
@@ -203,32 +203,15 @@ impl<'a> ElfMgr<'a> {
     }
 }
 
-fn shndx_to_str<'a>(idx: usize, shdrs: &'a SectionHeaders, strtab: &'a Strtab) -> Cow<'a, str> {
-    if idx == 0 {
-        Cow::Borrowed("")
-    } else if let Some(shdr) = shdrs.get(idx) {
-        if let Some(link_name) = strtab.get_at(shdr.sh_name) {
-            Cow::Borrowed(link_name)
-        } else {
-            Cow::Owned(format!("BAD_SH_NAME_IDX={}", shdr.sh_name))
-        }
-    } else if idx == 0xfff1 {
-        // Associated symbol is absolute.
-        Cow::Borrowed("ABS")
-    } else {
-        Cow::Owned(format!("BAD_IDX={}", idx))
-    }
-}
-
 /// the slice's len better greater than 0
-fn loop_inquire_index<T>(entry_slice: &[T]) -> Result<T, Error>
+pub fn loop_inquire_index<T>(entry_slice: &[T]) -> Result<T, Error>
 where
     T: Clone,
 {
     if entry_slice.is_empty() {
         return Err(anyhow!("The slice is empty"));
     }
-    println!("Please input index to choose the var(default is 0): ");
+    println!("Please input index to choose(default is 0): ");
     let mut line_input = String::with_capacity(16);
     loop {
         line_input.clear();
@@ -262,6 +245,23 @@ where
             }
             Err(std_error) => println!("Failed to read line: {:?}", std_error),
         }
+    }
+}
+
+fn shndx_to_str<'a>(idx: usize, shdrs: &'a SectionHeaders, strtab: &'a Strtab) -> Cow<'a, str> {
+    if idx == 0 {
+        Cow::Borrowed("")
+    } else if let Some(shdr) = shdrs.get(idx) {
+        if let Some(link_name) = strtab.get_at(shdr.sh_name) {
+            Cow::Borrowed(link_name)
+        } else {
+            Cow::Owned(format!("BAD_SH_NAME_IDX={}", shdr.sh_name))
+        }
+    } else if idx == 0xfff1 {
+        // Associated symbol is absolute.
+        Cow::Borrowed("ABS")
+    } else {
+        Cow::Owned(format!("BAD_IDX={}", idx))
     }
 }
 

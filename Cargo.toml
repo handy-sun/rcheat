@@ -28,6 +28,7 @@ goblin = "0.8.0"
 symbolic-common = "12.11.0"
 ansi_term = "0.12.1"
 once_cell = "1.19.0"
+walkdir = "2.5.0"
 
 [dependencies.regex]
 version = "1.10.4"

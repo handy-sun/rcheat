@@ -3,16 +3,16 @@ mod elf;
 mod fmt_dump;
 // #[macro_use]
 mod macros;
+mod qpid;
 
 use ansi_term::Color::Red;
-use anyhow::{anyhow, Error};
 use clap::Parser;
 use nix::libc::pid_t;
 use shadow_rs::shadow;
 
-use crate::ctrl::trace;
+use ctrl::further_parse;
 
-type AnyError = Result<(), Error>;
+type AnyError = Result<(), anyhow::Error>;
 
 #[derive(Clone, Debug, Parser)]
 #[command(
@@ -25,24 +25,27 @@ pub struct Args {
     #[arg(short = 'v', long = "version")]
     version: bool,
     /// Process id to trace
-    #[arg(short = 'p', long = "pid", default_value_t = -1)]
-    pid: pid_t,
+    #[arg(short, long)]
+    pid: Option<pid_t>,
+    /// Name(or part of name) of the process
+    #[arg(short, long)]
+    name: Option<String>,
     /// Keyword(or regex expression) of the variable which want to search
-    #[arg(short, long, default_value = "")]
-    keyword: String,
+    #[arg(short, long)]
+    keyword: Option<String>,
     /// Format output 'hex' or 'dec'
-    #[arg(short, long, default_value = "hex")]
-    format: String,
+    #[arg(short, long)]
+    format: Option<String>,
 }
 
 fn run_main(arg: Args) -> AnyError {
     shadow!(build);
 
     if arg.version {
-        let commit_hash_with_clean_color = if build::GIT_CLEAN {
-            String::from(build::SHORT_COMMIT)
+        let commit_hash_with_clean_color: &str = if build::GIT_CLEAN {
+            build::SHORT_COMMIT
         } else {
-            Red.paint(build::SHORT_COMMIT).to_string()
+            &Red.paint(build::SHORT_COMMIT)
         };
         println!(
             "{} {} ({} {})",
@@ -54,16 +57,7 @@ fn run_main(arg: Args) -> AnyError {
         return Ok(());
     }
 
-    // TODO: get_max_pid from /proc/sys/kernel/pid_max
-    if arg.pid <= 1 {
-        return Err(anyhow!("pid: {} is illegal!", arg.pid));
-    }
-
-    // if arg.keyword.is_empty() {
-    //     return Err(anyhow!("the input of keyword option is empty!"));
-    // }
-
-    trace(arg)
+    further_parse(arg)
 }
 
 fn main() {
