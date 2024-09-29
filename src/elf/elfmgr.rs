@@ -118,13 +118,11 @@ impl<'a> ElfMgr<'a> {
             0 => Err(anyhow!("Cannot find")),
             1 => {
                 let entry = entry_vec.first().unwrap().clone();
+                println!("Matched var: {}", entry.origin_name);
                 #[cfg(debug_assertions)]
-                eprintln!(
-                    "Matched var: {}, dbg: {:?}",
-                    entry.origin_name,
-                    self.dw_matcher
-                        .infer_var_type(&entry.origin_name, entry.mangled_name)
-                );
+                self.dw_matcher
+                    .infer_var_type(&entry.origin_name, entry.mangled_name)
+                    .ok();
                 Ok(entry)
             }
             2.. => {
@@ -295,12 +293,17 @@ mod tests {
             (
                 "_ZN7MaiData12statMemArrayE",
                 "MaiData::statMemArray",
-                Language::Rust, // Rust: rust or cpp
+                Language::Rust, // Rust: rust or Cpp
             ),
             (
                 "simple_arr",
                 "simple_arr",
                 Language::Unknown, // Unknown sometime includes C
+            ),
+            (
+                "_ZL10sc_sig_arr",
+                "sc_sig_arr",
+                Language::Cpp, // static var-type in Cpp
             ),
             (
                 "_Z11splitStringRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEc.cold",

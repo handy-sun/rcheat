@@ -154,7 +154,7 @@ pub fn further_parse(arg: Args) -> AnyError {
 pub fn trace(pid: pid_t, keyword: String, format: String) -> AnyError {
     let tracked_pid = Pid::from_raw(pid);
     let exe_path = get_abs_path(pid)?;
-    println!("exe_path: {}", &exe_path);
+    println!("exe_real_path: {}", &exe_path);
 
     let elf_bytes =
         std::fs::read(&exe_path).map_err(|err| anyhow!("Problem reading file {:?}: {}", &exe_path, err))?;

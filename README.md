@@ -114,10 +114,9 @@ sudo rcheat -p 13725
 
 Then will get the output about all global variables about this program
 ```
-[205.405µs] Time of `parse elf`
-[497.685µs] Time of `filter_symbol`
+...
 Matched count: 3
-index: var_name                                 | var_size(B)
+Index: var_name                                 | var_size(B)
     0: sc_sig_arr                               |      60
     1: structure                                |       8
     2: techs                                    |      21
@@ -134,7 +133,7 @@ Input `2` and `Enter`, you will see the byte value and ascii content of this var
 You also can specify the total name or partly keyword of the variable with option `-k`
 
 ```sh
-sudo rcheat -p 3754914 -k sig_arr
+sudo rcheat -p 13725 -k sig_arr
 ```
 ```
 ...
@@ -143,6 +142,12 @@ sudo rcheat -p 3754914 -k sig_arr
 0x0010: 0000 5155 4954 0000 494c 4c00 0000 5452 ┃ ..QUIT..ILL...TR
 0x0020: 4150 0000 494f 5400 0000 4255 5300 0000 ┃ AP..IOT...BUS...
 0x0030: 4650 4500 0000 4b49 4c4c 0000           ┃ FPE...KILL..
+```
+
+After version `0.1.3`, option `-n/--name` can query pid by process name
+
+```
+sudo rcheat -n onlyc -k sig_arr
 ```
 
 ##  3. <a name='Todo'></a>Todo
@@ -154,7 +159,7 @@ sudo rcheat -p 3754914 -k sig_arr
 - [ ] use log crate such as `log/env_logger` etc.
 - [ ] use config.toml to reduce some inputs
 - [ ] use `lua` to customized output
-- [ ] search pid by process name (like linux command: `pidof/pgrep`)
+- [x] search pid by process name (like linux command: `pidof/pgrep`)
 - [x] regex replace String.contain
 - [x] if match more than 1 entry name, ask for which one to select
 - [x] demangle symbols

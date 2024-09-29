@@ -83,15 +83,25 @@ impl<'a> DwarfInfoMatcher<'a> {
         let mut iter = dwarf.units();
         let mut btset_vec: Vec<_> = Vec::with_capacity(8);
         while let Some(header) = iter.next()? {
-            println!(
-                "## Unit at <.debug_info {:#x}>",
-                header.offset().as_debug_info_offset().unwrap().0
+            eprint!(
+                "## Unit at <.debug_info 0x{:08x}, ver: {}>",
+                header.offset().as_debug_info_offset().unwrap().0,
+                header.version()
             );
             let unit = dwarf.unit(header)?;
             let unit_ref = unit.unit_ref(&dwarf);
+
             if let Ok(addr_set) = filter_die_in_unit(unit_ref, demangle, mangle) {
+                // Output file name of this Unit
+                if let Some(program) = unit_ref.line_program.clone() {
+                    if let Some(file) = program.header().file_names().iter().next() {
+                        eprint!(" {}", unit_ref.attr_string(file.path_name())?.to_string_lossy()?);
+                    }
+                }
+                eprint!("\t| type_addr: {:?}", &addr_set);
                 btset_vec.push(addr_set);
             }
+            eprintln!();
         }
         Ok(btset_vec)
     }
@@ -103,7 +113,7 @@ fn filter_die_in_unit<'a>(
     demangle: &'a str,
     opt_mangle: Option<&'a str>,
 ) -> Result<BTreeSet<TypeOffset>, gimli::Error> {
-    // a closure (capture argument: UNitRef<..>) to get indirect string of this DW_AT_...
+    // a closure (capture argument: UnitRef<..>) to get indirect string of this DW_AT_...
     let pick_type_offset = |die: &gimli::DebuggingInformationEntry<CusReader<'a>>,
                             dw_at: gimli::DwAt,
                             target: &str|
