@@ -46,6 +46,10 @@ impl<'a> SymEntry<'a> {
     pub fn obj_size(&self) -> u64 {
         self.obj_size
     }
+
+    pub fn is_local_bind(&self) -> bool {
+        self.bind_type == sym::STB_LOCAL
+    }
 }
 
 #[allow(dead_code)]
@@ -121,7 +125,7 @@ impl<'a> ElfMgr<'a> {
                 println!("Matched var: {}", entry.origin_name);
                 #[cfg(debug_assertions)]
                 self.dw_matcher
-                    .infer_var_type(&entry.origin_name, entry.mangled_name)
+                    .infer_var_type(&entry.origin_name, entry.mangled_name, entry.is_local_bind())
                     .ok();
                 Ok(entry)
             }

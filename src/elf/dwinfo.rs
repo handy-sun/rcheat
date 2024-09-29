@@ -49,7 +49,7 @@ fn load_section<'d>(object: &object::File<'d>, name: &str) -> Result<CusSection<
 }
 
 // NOTE: This type is for the convenience of `println!()`
-pub type TypeOffset = *const u8;
+pub type TypeOffset = usize;
 pub type UniteError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 pub struct DwarfInfoMatcher<'a> {
@@ -74,6 +74,7 @@ impl<'a> DwarfInfoMatcher<'a> {
         &self,
         demangle: &str,
         mangle: Option<&'a str>,
+        is_local_symbol: bool,
     ) -> Result<Vec<BTreeSet<TypeOffset>>, UniteError> {
         // Create `Reader`s for all of the sections and do preliminary parsing.
         // Alternatively, we could have used `Dwarf::load` with an owned type such as `EndianRcSlice`.
@@ -91,27 +92,27 @@ impl<'a> DwarfInfoMatcher<'a> {
             let unit = dwarf.unit(header)?;
             let unit_ref = unit.unit_ref(&dwarf);
 
-            if let Ok(addr_set) = filter_die_in_unit(unit_ref, demangle, mangle) {
-                // Output file name of this Unit
-                if let Some(program) = unit_ref.line_program.clone() {
-                    if let Some(file) = program.header().file_names().iter().next() {
-                        eprint!(" {}", unit_ref.attr_string(file.path_name())?.to_string_lossy()?);
-                    }
+            // Temp test: Output file name of this Unit
+            if let Some(program) = unit_ref.line_program.clone() {
+                if let Some(file) = program.header().file_names().iter().next() {
+                    eprint!(" {}", unit_ref.attr_string(file.path_name())?.to_string_lossy()?);
                 }
-                eprint!("\t| type_addr: {:?}", &addr_set);
-                btset_vec.push(addr_set);
             }
             eprintln!();
+            if let Ok(addr_set) = filter_die(unit_ref, demangle, mangle, is_local_symbol) {
+                btset_vec.push(addr_set);
+            }
         }
         Ok(btset_vec)
     }
 }
 
-/// Iterate over the Debugging Information Entries (DIEs) in the unit.
-fn filter_die_in_unit<'a>(
-    unit: gimli::UnitRef<'a, CusReader<'a>>,
+/// Iterate over the Debugging Information Entries (DIEs) in the unit_ref.
+fn filter_die<'a>(
+    unit_ref: gimli::UnitRef<'a, CusReader<'a>>,
     demangle: &'a str,
     opt_mangle: Option<&'a str>,
+    is_local_symbol: bool,
 ) -> Result<BTreeSet<TypeOffset>, gimli::Error> {
     // a closure (capture argument: UnitRef<..>) to get indirect string of this DW_AT_...
     let pick_type_offset = |die: &gimli::DebuggingInformationEntry<CusReader<'a>>,
@@ -119,20 +120,20 @@ fn filter_die_in_unit<'a>(
                             target: &str|
      -> Result<TypeOffset, UniteError> {
         if let Some(linkage_val) = die.attr_value(dw_at)? {
-            let reloc_rd = unit.attr_string(linkage_val)?;
+            let reloc_rd = unit_ref.attr_string(linkage_val)?;
             let at_name = reloc_rd.to_string_lossy()?;
             if at_name == target {
                 // Compilation Unit version: 5
                 if let Some(type_value) = die.attr_value(gimli::DW_AT_type)? {
                     match type_value {
-                        AttributeValue::UnitRef(unit_off) => Ok(unit_off.0 as TypeOffset),
+                        AttributeValue::UnitRef(unit_off) => Ok(unit_off.0),
                         _s => Err(format!("Found {:?}, expect UnitRef()", _s).into()),
                     }
                 } else {
                     // Compilation Unit version: 4
                     if let Some(spec) = die.attr_value(gimli::DW_AT_specification)? {
                         match spec {
-                            AttributeValue::UnitRef(unit_off) => Ok(unit_off.0 as TypeOffset),
+                            AttributeValue::UnitRef(unit_off) => Ok(unit_off.0),
                             _s => Err(format!("Found {:?}, expect UnitRef()", _s).into()),
                         }
                     } else {
@@ -147,26 +148,36 @@ fn filter_die_in_unit<'a>(
         }
     };
 
-    let mut entries = unit.entries();
-    // let type_loc_addr: Vec<typeof()> = Vec::with_capacity(4);
+    let mut entries = unit_ref.entries();
     let mut type_loc_addr = BTreeSet::new();
     while let Some((_delta_depth, die)) = entries.next_dfs()? {
         match die.tag() {
-            // if a var donnot have attr: `DW_AT_linkage_name`, means it must be a `C` var
-            gimli::DW_TAG_variable => match opt_mangle {
-                Some(mangle) => match pick_type_offset(die, gimli::DW_AT_linkage_name, mangle) {
-                    Ok(t_offset) => {
+            gimli::DW_TAG_variable => {
+                if is_local_symbol {
+                    // May be a static var, dwarf donnot save its DW_AT_linkage_name
+                    if let Ok(t_offset) = pick_type_offset(die, gimli::DW_AT_name, demangle) {
+                        eprintln!("\tInsert t_offset(local): {:#x}", t_offset);
                         type_loc_addr.insert(t_offset);
                     }
-                    Err(_dyn_err) => {}
-                },
-                // TODO: need test
-                None => {
-                    if let Ok(t_offset) = pick_type_offset(die, gimli::DW_AT_name, demangle) {
-                        type_loc_addr.insert(t_offset);
+                } else {
+                    match opt_mangle {
+                        Some(mangle) => match pick_type_offset(die, gimli::DW_AT_linkage_name, mangle) {
+                            Ok(t_offset) => {
+                                eprintln!("\tInsert t_offset(linkage): {:#x}", t_offset);
+                                type_loc_addr.insert(t_offset);
+                            }
+                            Err(_dyn_err) => {}
+                        },
+                        // TODO: need test
+                        None => {
+                            if let Ok(t_offset) = pick_type_offset(die, gimli::DW_AT_name, demangle) {
+                                eprintln!("\tInsert t_offset(at_name): {:#x}", t_offset);
+                                type_loc_addr.insert(t_offset);
+                            }
+                        }
                     }
                 }
-            },
+            }
             // TODO: following
             gimli::DW_TAG_typedef => {}
             gimli::DW_TAG_base_type => {}

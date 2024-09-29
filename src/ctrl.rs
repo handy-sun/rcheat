@@ -5,7 +5,7 @@ use crate::qpid;
 use crate::AnyError;
 use crate::Args;
 
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::{mem, time::Instant};
@@ -130,9 +130,14 @@ pub fn further_parse(arg: Args) -> AnyError {
         }
     } else if arg.pid.is_some() {
         let temp_pid = arg.pid.unwrap();
-        // TODO: get_max_pid from /proc/sys/kernel/pid_max
+        let pid_max = fs::read_to_string("/proc/sys/kernel/pid_max")?
+            .trim()
+            .parse::<pid_t>()?;
+        if temp_pid > pid_max {
+            return Err(anyhow!("Input's pid greater than pid_max({})!", pid_max));
+        }
         if temp_pid <= 1 {
-            return Err(anyhow!("Input's pid: {} is illegal!", arg.pid.unwrap()));
+            return Err(anyhow!("Input's pid is illegal!"));
         }
         temp_pid
     } else {
@@ -146,12 +151,12 @@ pub fn further_parse(arg: Args) -> AnyError {
 
     trace(
         pid,
-        arg.keyword.unwrap_or_default(),
-        arg.format.unwrap_or("hex".to_owned()),
+        &arg.keyword.unwrap_or_default(),
+        &arg.format.unwrap_or("hex".to_owned()),
     )
 }
 
-pub fn trace(pid: pid_t, keyword: String, format: String) -> AnyError {
+pub fn trace(pid: pid_t, keyword: &String, format: &String) -> AnyError {
     let tracked_pid = Pid::from_raw(pid);
     let exe_path = get_abs_path(pid)?;
     println!("exe_real_path: {}", &exe_path);
@@ -163,7 +168,7 @@ pub fn trace(pid: pid_t, keyword: String, format: String) -> AnyError {
     let elf_mgr = elf::ElfMgr::prase_from(&elf_bytes)?;
     println!("[{:?}] Time of `parse elf`", start.elapsed());
 
-    let entry = elf_mgr.select_sym_entry(&keyword)?;
+    let entry = elf_mgr.select_sym_entry(keyword)?;
 
     let entry_addr = if elf_mgr.is_exec_elf() {
         entry.obj_addr()
@@ -177,7 +182,10 @@ pub fn trace(pid: pid_t, keyword: String, format: String) -> AnyError {
         if let Some(total_addr) = base_addr.checked_add(entry.obj_addr()) {
             total_addr
         } else {
-            return Err(anyhow!("Operation of base_addr add obj_addr exceeds the limit"));
+            return Err(anyhow!(
+                "Operation of {base_addr} add {} exceeds the limit",
+                entry.obj_addr()
+            ));
         }
     } else {
         return Err(anyhow!("Unsupport e_type:"));

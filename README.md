@@ -157,6 +157,7 @@ sudo rcheat -n onlyc -k sig_arr
 - [ ] parse `.debug*` section
 - [ ] use lib like `table` to format matrix table data
 - [ ] use log crate such as `log/env_logger` etc.
+- [ ] write data to tracee process' memory
 - [ ] use config.toml to reduce some inputs
 - [ ] use `lua` to customized output
 - [x] search pid by process name (like linux command: `pidof/pgrep`)
