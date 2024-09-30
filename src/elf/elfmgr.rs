@@ -38,6 +38,7 @@ pub struct SymEntry<'a> {
     section: Cow<'a, str>,
 }
 
+#[allow(dead_code)]
 impl<'a> SymEntry<'a> {
     pub fn obj_addr(&self) -> u64 {
         self.obj_addr
