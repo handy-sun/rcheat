@@ -39,6 +39,7 @@ impl ProcessAttr {
 
         let status_file = fs::File::open(path_value.join("status"))?;
         let status_reader = io::BufReader::new(status_file);
+        // The first line of file is `Name:\t...`
         let first_line = status_reader.lines().next().unwrap()?;
         let status_name = String::from(first_line.split_once(':').unwrap_or_default().1.trim_ascii());
 

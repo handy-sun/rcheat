@@ -81,13 +81,14 @@ impl<'a> DwarfInfoMatcher<'a> {
             .dwarf_sections
             .borrow(|section| borrow_section(section, self.runtime_endian));
         let mut iter = dwarf.units();
-        let mut btset_vec: Vec<_> = Vec::with_capacity(8);
+        let mut uo_vec = Vec::with_capacity(8);
         while let Some(header) = iter.next()? {
-            eprint!(
-                "## Unit at <.debug_info: {:#x}, ver: {}>",
-                header.offset().as_debug_info_offset().unwrap().0,
-                header.version()
-            );
+            let dio = header
+                .offset()
+                .as_debug_info_offset()
+                .expect("DebugInfoOffset is none")
+                .0;
+            eprint!("## Unit at <.debug_info: {:6x}, ver: {}>", dio, header.version());
             let unit = dwarf.unit(header)?;
             let unit_ref = unit.unit_ref(&dwarf);
 
@@ -99,10 +100,11 @@ impl<'a> DwarfInfoMatcher<'a> {
             }
             eprintln!();
             if let Ok(uo) = filter_die(&unit_ref, demangle, mangle, is_local_symbol) {
-                btset_vec.push(uo);
+                uo_vec.push(uo);
+                eprintln!("  GOFF: {:#x}", dio + uo.0);
             }
         }
-        Ok(btset_vec)
+        Ok(uo_vec)
     }
 }
 
@@ -149,18 +151,19 @@ fn filter_die<'a>(
 
     let none_and_set = |opt: &mut Option<_>, tar: _, tips: &str| {
         if opt.is_none() {
-            eprintln!("\tInsert once({}): {:?}", tips, tar);
+            eprintln!("  Insert once({}): {:?}", tips, tar);
             *opt = Some(tar);
         } else {
-            eprintln!("\tOpt had: {:?}, ins: {:?}", opt, tar);
+            eprintln!("  Opt had: {:?}, ins: {:?}", opt, tar);
         }
     };
 
-    let mut entries = unit_ref.entries();
     let mut opt_die = None;
-    let mut type_defs = BTreeSet::<UnitOffset>::new();
+    let mut type_def_btrs = BTreeSet::<UnitOffset>::new();
+    // Must use a mut var to init entries cursor
+    let mut entries_cursor = unit_ref.entries();
 
-    while let Some((_delta_depth, die)) = entries.next_dfs()? {
+    while let Some((_delta_depth, die)) = entries_cursor.next_dfs()? {
         match die.tag() {
             gimli::DW_TAG_variable => {
                 if is_local_symbol {
@@ -170,12 +173,11 @@ fn filter_die<'a>(
                     }
                 } else {
                     match opt_mangle {
-                        Some(mangle) => match pick_type_offset(die, gimli::DW_AT_linkage_name, mangle) {
-                            Ok(t_offset) => {
+                        Some(mangle) => {
+                            if let Ok(t_offset) = pick_type_offset(die, gimli::DW_AT_linkage_name, mangle) {
                                 none_and_set(&mut opt_die, t_offset, "linkage");
                             }
-                            Err(_dyn_err) => {}
-                        },
+                        }
                         // TODO: need test
                         None => {
                             if let Ok(t_offset) = pick_type_offset(die, gimli::DW_AT_name, demangle) {
@@ -185,9 +187,8 @@ fn filter_die<'a>(
                     }
                 }
             }
-
             gimli::DW_TAG_typedef => {
-                type_defs.insert(die.offset());
+                type_def_btrs.insert(die.offset());
             }
             _ => (),
         }
@@ -195,32 +196,45 @@ fn filter_die<'a>(
 
     match opt_die {
         Some(die_off) => {
-            let real = follow_typedef_tag(die_off, &type_defs, unit_ref)?;
-            eprintln!("real: {:#x}", real.0);
+            let real = follow_typedef_tag(die_off, &type_def_btrs, unit_ref)?;
+            recursive_parse_tag(real, unit_ref).ok();
             Ok(real)
         }
         None => Err(read::Error::MissingUnitDie),
     }
 }
 
-#[allow(dead_code)]
 fn follow_typedef_tag<'a>(
-    off: UnitOffset,
-    btree: &BTreeSet<UnitOffset>,
+    uo: UnitOffset,
+    def_btrs: &BTreeSet<UnitOffset>,
     unit_ref: &gimli::UnitRef<'a, CusReader<'a>>,
 ) -> Result<UnitOffset, gimli::Error> {
-    let Some(type_value) = unit_ref.entry(off)?.attr_value(gimli::DW_AT_type)? else {
+    let Some(attr_value) = unit_ref.entry(uo)?.attr_value(gimli::DW_AT_type)? else {
         return Err(read::Error::UnsupportedAttributeForm);
     };
 
-    match type_value {
-        AttributeValue::UnitRef(unit_off) => {
-            if btree.contains(&unit_off) {
-                follow_typedef_tag(unit_off, btree, unit_ref)
+    match attr_value {
+        AttributeValue::UnitRef(uo_points_to) => {
+            if def_btrs.contains(&uo_points_to) {
+                follow_typedef_tag(uo_points_to, def_btrs, unit_ref)
             } else {
-                Ok(unit_off)
+                Ok(uo_points_to)
             }
         }
         _s => Err(read::Error::TypeMismatch),
     }
+}
+
+fn recursive_parse_tag<'a>(
+    uo: UnitOffset,
+    unit_ref: &gimli::UnitRef<'a, CusReader<'a>>,
+) -> Result<(), gimli::Error> {
+    let tag = unit_ref.entry(uo)?.tag();
+    eprintln!("  real: {:#x}. DwTag: {:?}", uo.0, tag.static_string());
+    match tag {
+        // TODO
+        gimli::DW_TAG_array_type => (),
+        _ => (),
+    }
+    Ok(())
 }

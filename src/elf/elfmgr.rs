@@ -24,7 +24,7 @@ const MAGIC_LEN: usize = 16;
 const DEM_OPT: DemangleOptions = DemangleOptions::name_only().parameters(true);
 
 static RE_VAR: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(anonymous namespace)|@GLIBC|std::|_IO_stdin_used|^\._|^__gnu_|^__cxxabiv|^guard variable|\)::__func__$|\.\d+$").unwrap()
+    Regex::new(r"(anonymous namespace)|@GLIBC|std::|_IO_stdin_used|^\._|^__gnu_|^__cxxabiv|^guard variable|\)::__func__$|\.\d+$").expect("Lazy<Regex> init failed")
 });
 
 /// Symbol (.symtab) entry only include the info we needed
@@ -70,7 +70,7 @@ impl<'a> ElfMgr<'a> {
             return Err(anyhow!("Unknown magic: {:#x}", magic));
         }
 
-        match Object::parse(bytes).unwrap() {
+        match Object::parse(bytes)? {
             Object::Elf(val) => Ok(ElfMgr {
                 elf: val,
                 dw_matcher: match DwarfInfoMatcher::parse(bytes) {
@@ -122,7 +122,7 @@ impl<'a> ElfMgr<'a> {
         match entry_vec.len() {
             0 => Err(anyhow!("Cannot find")),
             1 => {
-                let entry = entry_vec.first().unwrap().clone();
+                let entry = entry_vec[0].clone();
                 println!("Matched var: {}", entry.origin_name);
                 #[cfg(debug_assertions)]
                 self.dw_matcher
