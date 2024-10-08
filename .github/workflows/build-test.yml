@@ -70,16 +70,24 @@ jobs:
           command: test
           args: --target=${{ matrix.job.target }}
 
-      - name: Print binary dependences
+      - name: Build (release)
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.job.use-cross }}
+          command: build
+          args: --target=${{ matrix.job.target }} --release
+
+      - name: Print release binary dependences
         shell: bash
         run: |
           bin_name="$(perl -nle 'if (/^\[\[bin\]\]/) { $found = 1; next; } if ($found && /^name\s*=\s*"([^"]+)"/) { print $1; $found = 0; }' Cargo.toml)"
-          bin_path="target/${{ matrix.job.target }}/debug/${bin_name}"
+          bin_path="target/${{ matrix.job.target }}/release/${bin_name}"
           echo ${bin_path}
 
           if [[ -e "${bin_path}" ]]; then 
             if command -v ldd &>/dev/null; then
               ldd ${bin_path} || true
+              strings ${bin_path} | grep --color=auto -E '^GLIBC_' || true
             elif command -v otool &>/dev/null; then
               otool -L ${bin_path} || true
             fi

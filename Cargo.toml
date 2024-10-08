@@ -29,60 +29,21 @@ symbolic-common = "12.11.0"
 ansi_term = "0.12.1"
 once_cell = "1.19.0"
 walkdir = "2.5.0"
+symbolic-demangle = { version = "12.11.0", default-features = false, features = ["cpp", "rust"] }
+regex = { version = "^1.10", default-features = false, features = ["std", "unicode-perl"]}
+clap = { version = "^4.5", default-features = false, features = ["std", "derive", "help", "usage"] }
+gimli = { version = "^0.31", features = ["read"] }
+object = { version = "^0.36", features = ["read"] }
+shadow-rs = { version = "^0.35", default-features = false, features = ["tzdb"] }
 
-[dependencies.regex]
-version = "1.10.4"
-default-features = false
-features = [
-    "std",
-    "unicode-perl"
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29.0", default-features = false, features = ["ptrace", "fs"] }
+
+[build-dependencies]
+shadow-rs = { version = "^0.35", default-features = false, features = ["tzdb"] }
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/x86_64-unknown-linux-musl/release/rcheat", dest = "/usr/bin/rcheat", mode = "755" },
+    { source = "README.md", dest = "/usr/share/rcheat/doc/README.md", mode = "644" },
 ]
-
-[dependencies.clap]
-version = "^4.5"
-default-features = false
-features = [
-    "std",
-    "derive",
-    "help",
-    "usage",
-]
-
-[dependencies.shadow-rs]
-version = "^0.35"
-default-features = false
-features = ["tzdb"]
-
-[dependencies.symbolic-demangle]
-version = "12.11.0"
-default-features = false
-features = [
-    "cpp",
-    "rust",
-]
-
-[dependencies.gimli]
-version = "0.31.0"
-features = [
-    "read"
-]
-
-[dependencies.object]
-version = "0.36.0"
-features = [
-    "read"
-]
-
-[target.'cfg(unix)'.dependencies.nix]
-version = "0.29.0"
-default-features = false
-features = [
-    "ptrace",
-    "fs",
-]
-
-## build-dependencies
-[build-dependencies.shadow-rs]
-version = "^0.35"
-default-features = false
-features = ["tzdb"]
