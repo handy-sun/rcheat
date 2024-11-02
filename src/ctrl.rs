@@ -280,7 +280,7 @@ mod tests {
 7fc5f7864000-7fc5f7874000 r-xp 00000000 08:02 8918670 /usr/lib64/libtest
 7fc5f7874000-7fc5f7a73000 ---p 00010000 08:02 8918670 /usr/lib64/libtest";
         let buf_rdr = BufReader::new(contents.as_ref());
-        assert!(!get_base_addr(buf_rdr, exe_abs_path).is_ok());
+        assert!(get_base_addr(buf_rdr, exe_abs_path).is_err());
     }
 
     #[test]
