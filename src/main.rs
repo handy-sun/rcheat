@@ -2,6 +2,7 @@ mod ctrl;
 mod elf;
 mod fmt_dump;
 // #[macro_use]
+mod lua;
 mod macros;
 mod qpid;
 
