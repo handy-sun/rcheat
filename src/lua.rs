@@ -3,6 +3,36 @@ use std::path::PathBuf;
 use std::{env, fs};
 use walkdir::WalkDir;
 
+const RCHEAT_CORE_SRC: &str = r#"
+-- Convert binary(string) to number
+function Bytes2int(bytes, is_little_endian)
+  local fmt = (is_little_endian == true and "<I" or ">I") .. #bytes
+  return string.unpack(fmt, bytes)
+end
+
+function SetupTableData(bytes, tab_list)
+  local index = 1
+  local new_list = {}
+  while true do
+    for _, value in pairs(tab_list) do
+      if index + value.size - 1 > #bytes then
+        return new_list
+      end
+      local next_index = index + value.size
+      local part_bytes = string.sub(bytes, index, next_index - 1)
+
+      table.insert(new_list, {
+        name = value.name,
+        size = value.size,
+        data = string.unpack(value.fmt, part_bytes)
+      })
+
+      index = next_index
+    end
+  end
+end
+"#;
+
 fn print_table(tab: &Table, indent: usize) -> mlua::Result<String> {
     let prefix = vec!["  "; indent].concat();
     let mut output: Vec<_> = Vec::with_capacity(16);
@@ -29,7 +59,7 @@ fn print_table(tab: &Table, indent: usize) -> mlua::Result<String> {
 }
 
 #[allow(dead_code)]
-pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], type_name: &str) -> mlua::Result<()> {
+pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], type_name: &str) -> mlua::Result<String> {
     env::set_current_dir(&lua_src_path)?;
 
     // This loads the default Lua std library *without* the debug library.
@@ -40,12 +70,16 @@ pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], type_name: &str) -> m
         .max_depth(1)
         .follow_links(true)
         .into_iter();
+
+    lua.load(RCHEAT_CORE_SRC).set_name("rcheat").exec()?;
+
     for res_entry in walker {
         if let Ok(entry) = res_entry {
             if entry.path().is_dir() {
                 continue;
             }
-            println!("{:?}", entry.path());
+            println!("path: {:?}, fname: {:?}", entry.path(), entry.file_name());
+
             let file_content = fs::read_to_string(entry.path())?;
             lua.load(&file_content).exec()?;
         }
@@ -59,6 +93,5 @@ pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], type_name: &str) -> m
         .call_function(create_func.as_ref(), lua_str)?;
 
     let inner: Table = _res.get(type_name)?;
-    println!("{}", print_table(&inner, 0)?);
-    Ok(())
+    Ok(print_table(&inner, 0)?)
 }

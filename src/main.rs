@@ -34,7 +34,7 @@ pub struct Args {
     /// Keyword(or regex expression) of the variable which want to search
     #[arg(short, long)]
     keyword: Option<String>,
-    /// Format output 'hex' or 'dec'
+    /// Format output 'hex' or 'dec', 'lua'
     #[arg(short, long)]
     format: Option<String>,
 }

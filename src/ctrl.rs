@@ -1,6 +1,7 @@
 use crate::ceil_to_multiple;
 use crate::elf;
 use crate::fmt_dump::*;
+use crate::lua::dump_with_lua;
 use crate::qpid;
 use crate::AnyError;
 use crate::Args;
@@ -8,6 +9,7 @@ use crate::Args;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::path::PathBuf;
 use std::{mem, time::Instant};
 
 use clap::{error::ErrorKind, CommandFactory};
@@ -250,6 +252,9 @@ pub fn trace(pid: pid_t, keyword: &String, format: &String) -> AnyError {
     if let Some(bytes_ref) = peek_buf.get(..) {
         let out_content = if format == "dec" {
             dump_to_dec_content(bytes_ref)
+        } else if format == "lua" {
+            dump_with_lua(&PathBuf::from("/etc/rcheat/lua"), bytes_ref, "ps")
+                .map_err(|err| anyhow!("{:?}", err))?
         } else {
             dump_to_hex_content(bytes_ref)
         };
