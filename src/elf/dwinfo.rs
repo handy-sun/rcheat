@@ -1,6 +1,6 @@
 use std::borrow::{self, Cow};
 use std::collections::BTreeSet;
-use std::{error, usize};
+use std::error;
 
 use gimli::{read, AttributeValue, DwarfSections, Reader, UnitOffset};
 use object::{Object, ObjectSection};
@@ -225,6 +225,7 @@ fn follow_typedef_tag<'a>(
     }
 }
 
+#[warn(clippy::single_match)]
 fn recursive_parse_tag<'a>(
     uo: UnitOffset,
     unit_ref: &gimli::UnitRef<'a, CusReader<'a>>,

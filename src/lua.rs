@@ -60,7 +60,7 @@ fn print_table(tab: &Table, indent: usize) -> mlua::Result<String> {
 
 #[allow(dead_code)]
 pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], type_name: &str) -> mlua::Result<String> {
-    env::set_current_dir(&lua_src_path)?;
+    env::set_current_dir(lua_src_path)?;
 
     // This loads the default Lua std library *without* the debug library.
     let lua = Lua::new();
@@ -73,16 +73,13 @@ pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], type_name: &str) -> m
 
     lua.load(RCHEAT_CORE_SRC).set_name("rcheat").exec()?;
 
-    for res_entry in walker {
-        if let Ok(entry) = res_entry {
-            if entry.path().is_dir() {
-                continue;
-            }
-            println!("path: {:?}, fname: {:?}", entry.path(), entry.file_name());
-
-            let file_content = fs::read_to_string(entry.path())?;
-            lua.load(&file_content).exec()?;
+    for entry in walker.flatten() {
+        if entry.path().is_dir() {
+            continue;
         }
+        println!("path: {:?}, fname: {:?}", entry.path(), entry.file_name());
+        let file_content = fs::read_to_string(entry.path())?;
+        lua.load(&file_content).exec()?;
     }
 
     let lua_str = lua.create_string(bytes)?;
@@ -93,5 +90,5 @@ pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], type_name: &str) -> m
         .call_function(create_func.as_ref(), lua_str)?;
 
     let inner: Table = _res.get(type_name)?;
-    Ok(print_table(&inner, 0)?)
+    print_table(&inner, 0)
 }
