@@ -30,24 +30,16 @@ static RE_VAR: Lazy<Regex> = Lazy::new(|| {
 /// Symbol (.symtab) entry only include the info we needed
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct SymEntry<'a> {
-    obj_addr: u64,
-    obj_size: u64,
+    pub obj_addr: u64,
+    pub obj_size: u64,
     bind_type: u8,
-    origin_name: String,
+    pub origin_name: String,
     mangled_name: Option<&'a str>,
     section: Cow<'a, str>,
 }
 
 #[allow(dead_code)]
 impl<'a> SymEntry<'a> {
-    pub fn obj_addr(&self) -> u64 {
-        self.obj_addr
-    }
-
-    pub fn obj_size(&self) -> u64 {
-        self.obj_size
-    }
-
     pub fn is_local_bind(&self) -> bool {
         self.bind_type == sym::STB_LOCAL
     }

@@ -124,8 +124,8 @@ pub fn further_parse(arg: Args) -> AnyError {
             }
             2.. => {
                 println!("Matched count: {}", proc_attr_vec.len());
-                for (i, entry) in proc_attr_vec.iter().enumerate() {
-                    println!("{:2}: {:?}", i, entry);
+                for (i, proc_attr) in proc_attr_vec.iter().enumerate() {
+                    println!("{:2}: {:?}", i, proc_attr);
                 }
                 elf::loop_inquire_index(&proc_attr_vec)?.pid
             }
@@ -173,7 +173,7 @@ pub fn trace(pid: pid_t, keyword: &String, format: &String) -> AnyError {
     let entry = elf_mgr.select_sym_entry(keyword)?;
 
     let entry_addr = if elf_mgr.is_exec_elf() {
-        entry.obj_addr()
+        entry.obj_addr
     } else if elf_mgr.is_dyn_elf() {
         let proc_maps = format!("/proc/{}/maps", tracked_pid);
         let file = File::open(Path::new(&proc_maps))
@@ -181,19 +181,22 @@ pub fn trace(pid: pid_t, keyword: &String, format: &String) -> AnyError {
         let file_reader = BufReader::new(file);
         let base_addr = get_base_addr(file_reader, exe_path.as_str())?;
         println!("base_addr: {:#x} ({})", base_addr, base_addr);
-        if let Some(total_addr) = base_addr.checked_add(entry.obj_addr()) {
+        if let Some(total_addr) = base_addr.checked_add(entry.obj_addr) {
             total_addr
         } else {
             return Err(anyhow!(
                 "Operation of {base_addr} add {} exceeds the limit",
-                entry.obj_addr()
+                entry.obj_addr
             ));
         }
     } else {
         return Err(anyhow!("Unsupport e_type:"));
     };
 
-    println!("entry address: {:#x}, size: {}", entry_addr, entry.obj_size());
+    println!(
+        "entry address: {:#x}, size: {}, origin: {}",
+        entry_addr, entry.obj_size, entry.origin_name
+    );
 
     let start = Instant::now();
     pass_or_exit(&ptrace::attach(tracked_pid), "ptrace_attach")?;
@@ -208,7 +211,7 @@ pub fn trace(pid: pid_t, keyword: &String, format: &String) -> AnyError {
     }
 
     let addr = ptrace::AddressType::from(entry_addr as ptrace::AddressType);
-    let var_sz = entry.obj_size() as usize;
+    let var_sz = entry.obj_size as usize;
     // It can be confirmed that this number(var_sz) must be greater than 0
     let mut peek_buf = BytesMut::with_capacity(ceil_to_multiple!(var_sz, LONG_SIZE));
 
@@ -253,7 +256,7 @@ pub fn trace(pid: pid_t, keyword: &String, format: &String) -> AnyError {
         let out_content = if format == "dec" {
             dump_to_dec_content(bytes_ref)
         } else if format == "lua" {
-            dump_with_lua(&PathBuf::from("/etc/rcheat/lua"), bytes_ref, "ps")
+            dump_with_lua(&PathBuf::from("/etc/rcheat/lua"), bytes_ref, &entry.origin_name)
                 .map_err(|err| anyhow!("{:?}", err))?
         } else {
             dump_to_hex_content(bytes_ref)

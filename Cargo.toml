@@ -36,6 +36,7 @@ gimli = { version = "^0.31", features = ["read"] }
 object = { version = "^0.36", features = ["read"] }
 shadow-rs = { version = "^0.35", default-features = false, features = ["tzdb"] }
 mlua = { version = "0.10.1", features = ["lua54", "vendored"] }
+tabled = { version = "0.16.0" }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29.0", default-features = false, features = ["ptrace", "fs"] }
