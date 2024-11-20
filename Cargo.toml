@@ -1,6 +1,6 @@
 [package]
 name = "rcheat"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2021"
 authors = ["handy-sun <handy-sun@foxmail.com>"]
 homepage = "https://github.com/handy-sun/rcheat"
@@ -49,3 +49,10 @@ assets = [
     { source = "target/x86_64-unknown-linux-musl/release/rcheat", dest = "/usr/bin/rcheat", mode = "755" },
     { source = "README.md", dest = "/usr/share/rcheat/doc/README.md", mode = "644" },
 ]
+
+[package.metadata.deb]
+license-file = ["LICENSE", "4"]
+extended-description = """\
+A simple command to trace another process\
+(This program must be run with root privileges)."""
+depends = "$auto"
