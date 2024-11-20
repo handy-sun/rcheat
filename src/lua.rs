@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::{env, fs};
 use tabled::{
     builder::Builder,
-    // settings::Style
+    settings::{Alignment, Style},
 };
 use walkdir::WalkDir;
 
@@ -37,20 +37,32 @@ fn print_table(tab: &LuaTable, indent: usize) -> mlua::Result<String> {
     Ok(output.concat())
 }
 
-#[allow(dead_code)]
-fn print_two_dimensional_table(tab: &LuaTable, builder: &mut Builder) -> mlua::Result<String> {
+fn print_two_dimensional_table(tab: &LuaTable, tab_col: &LuaTable) -> mlua::Result<String> {
+    let mut builder = Builder::new();
+    let mut columns = Vec::with_capacity(16);
+
+    columns.push("(i)".to_string());
+    for (_, cols) in tab_col.pairs::<mlua::Value, LuaTable>().flatten() {
+        columns.push(cols.get("name")?);
+    }
+    builder.push_record(columns.clone());
+
     for (key, tab2d) in tab.pairs::<mlua::Integer, LuaTable>().flatten() {
-        let mut record: Vec<String> = Vec::with_capacity(16);
-        record.push(key.to_string());
+        let mut record: Vec<String> = Vec::with_capacity(columns.len());
+        record.push((key - 1).to_string());
+
         for (_index, value) in tab2d.pairs::<mlua::Integer, LuaTable>().flatten() {
             record.push(value.get("data")?);
         }
-        // builder.insert_column(0, column);
+        builder.push_record(record);
     }
-    Ok(builder.clone().build().to_string())
+
+    Ok(builder
+        .build()
+        .with((Alignment::right(), Style::rounded()))
+        .to_string())
 }
 
-#[allow(dead_code)]
 pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], origin_name: &str) -> mlua::Result<String> {
     env::set_current_dir(lua_src_path)?;
 
@@ -69,26 +81,28 @@ pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], origin_name: &str) ->
         if entry.path().is_dir() {
             continue;
         }
-        println!("path: {:?}, fname: {:?}", entry.path(), entry.file_name());
+        println!("path: {:?}", entry.path());
         let file_content = fs::read_to_string(entry.path())?;
         lua.load(&file_content).exec()?;
     }
 
-    let method_res: mlua::String = globals
-        .get::<LuaTable>("Structure")?
-        .call_method("get_name", origin_name)?;
+    let structure_obj = globals.get::<LuaTable>("Structure")?;
+    let match_table: LuaTable = structure_obj.get("match_table")?;
 
-    // println!("{:?}", method_res);
-    let byname = method_res.to_string_lossy();
-    let create_func = format!("new_{}", byname);
+    let alias_lstr: mlua::String = globals.call_function("LoopMatchAlias", (origin_name, match_table))?;
+    let alias = alias_lstr.to_string_lossy();
+    if alias.is_empty() {
+        return Err(mlua::Error::runtime("Empty alias"));
+    }
+
     let lua_str = lua.create_string(bytes)?;
+    let create_func = format!("new_{}", alias);
+    let col_name = format!("{}_col", alias);
 
-    let _res: LuaTable = globals
-        .get::<LuaTable>("Structure")?
-        .call_function(create_func.as_ref(), lua_str)?;
+    let instance: LuaTable = structure_obj.call_method(&create_func, lua_str)?;
 
-    let inner: LuaTable = _res.get(origin_name)?;
+    let inner: LuaTable = instance.get(alias)?;
+    let inner_col: LuaTable = instance.get(col_name)?;
 
-    let mut builder = Builder::new();
-    print_two_dimensional_table(&inner, &mut builder)
+    print_two_dimensional_table(&inner, &inner_col)
 }

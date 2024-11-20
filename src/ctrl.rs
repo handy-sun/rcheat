@@ -253,6 +253,7 @@ pub fn trace(pid: pid_t, keyword: &String, format: &String) -> AnyError {
 
     println!("[{:?}] Time of `trace and peek`", start.elapsed());
     if let Some(bytes_ref) = peek_buf.get(..) {
+        let start = Instant::now();
         let out_content = if format == "dec" {
             dump_to_dec_content(bytes_ref)
         } else if format == "lua" {
@@ -261,6 +262,7 @@ pub fn trace(pid: pid_t, keyword: &String, format: &String) -> AnyError {
         } else {
             dump_to_hex_content(bytes_ref)
         };
+        println!("[{:?}] Time of `dump contents`", start.elapsed());
         println!("\n{}", out_content);
         Ok(())
     } else {
