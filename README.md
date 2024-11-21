@@ -1,6 +1,7 @@
 
 # **rcheat**
 
+**English | [简体中文](./README.zh-CN.md)**<br>
 [![build-test](https://github.com/handy-sun/rcheat/actions/workflows/build-test.yml/badge.svg)](https://github.com/handy-sun/rcheat/actions/workflows/build-test.yml)
 ![latest_release](https://img.shields.io/github/v/tag/handy-sun/rcheat?label=release)
 [![Crates.io](https://img.shields.io/crates/v/rcheat.svg)](https://crates.io/crates/rcheat)
@@ -155,11 +156,11 @@ sudo rcheat -n onlyc -k sig_arr
 *The development plan of the project and the functions to be implemented*
 
 - [ ] parse `.debug*` section
-- [ ] use lib like `table` to format matrix table data
 - [ ] use log crate such as `log/env_logger` etc.
 - [ ] write data to tracee process' memory
 - [ ] use config.toml to reduce some inputs
-- [ ] use `lua` to customized output
+- [x] use lib like `table` to format matrix table data
+- [x] use `lua` to customized output
 - [x] search pid by process name (like linux command: `pidof/pgrep`)
 - [x] regex replace String.contain
 - [x] if match more than 1 entry name, ask for which one to select
