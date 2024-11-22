@@ -5,7 +5,11 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
-on: [ push, pull_request]
+on:
+  push:
+    branches: [ "dev*", "workflows-patch" ]
+  pull_request:
+    branches: [ "master", "workflows-patch" ]
 
 jobs:
   build:

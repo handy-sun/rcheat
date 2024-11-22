@@ -1,9 +1,10 @@
+use ansi_term::Color::Blue;
 use mlua::{Lua, ObjectLike, Value};
 use std::path::PathBuf;
 use std::{env, fs};
 use tabled::{
     builder::Builder,
-    settings::{Alignment, Style},
+    settings::{object::Columns, Alignment, Format, Style},
 };
 use walkdir::WalkDir;
 
@@ -60,6 +61,7 @@ fn print_two_dimensional_table(tab: &LuaTable, tab_col: &LuaTable) -> mlua::Resu
     Ok(builder
         .build()
         .with((Alignment::right(), Style::rounded()))
+        .modify(Columns::single(0), Format::content(|s| Blue.paint(s).to_string()))
         .to_string())
 }
 
