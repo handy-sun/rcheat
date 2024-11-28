@@ -1,4 +1,4 @@
----Dump bytes contents to a formated table 
+---Dump bytes contents to a formated table
 ---@param bytes string byte array
 ---@param tab_list table defined format
 ---@return table two_dimensional table
@@ -16,8 +16,10 @@ function SetupTableData(bytes, tab_list)
 			local final_fmt = ''
 			if value.fmt == nil then
 				final_fmt = string.format('i%d=', value.size)
-			else
+			elseif value.fmt == 'i' or value.fmt == 'I' or value.fmt == 's' or value.fmt == 'c' then
 				final_fmt = string.format('%s%d=', value.fmt, value.size)
+			else
+				final_fmt = string.format('%s=', value.fmt)
 			end
 
 			table.insert(one_piece, {
