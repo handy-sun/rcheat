@@ -9,6 +9,8 @@
 
 > *Get/modify simple variable's value in another Linux running process*
 
+**Please note that this project is only for learning and research purposes, and the author is not responsible for any legal consequences caused by the use of this project.**
+
 ------
 
 <!-- vscode-markdown-toc -->
