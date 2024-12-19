@@ -1,10 +1,10 @@
-use ansi_term::Colour::{Blue, Fixed};
 use bytes::{Buf, BytesMut};
+use owo_colors::OwoColorize;
 
 fn to_avl_ascii(b: u8) -> String {
     match !b.is_ascii_control() {
-        true => Blue.paint(String::from(b as char)).to_string(),
-        false => Fixed(248).paint(".").to_string(),
+        true => String::from(b as char).blue().to_string(),
+        false => ".".bright_black().to_string(),
     }
 }
 
@@ -42,7 +42,7 @@ pub fn dump_to_hex_content(bytes: &[u8]) -> String {
 
     let mut line_counts = 0;
     while bm.remaining() >= per_line {
-        out.push_str(format!("{:#06x}: ", line_counts * per_line).as_ref());
+        out.push_str(&format!("{:#06x}: ", line_counts * per_line).magenta().to_string());
         let mut ascii_vec = Vec::with_capacity(per_line);
         for _ in 0..parts_len {
             let first_byte = bm.get_u8();
@@ -59,7 +59,7 @@ pub fn dump_to_hex_content(bytes: &[u8]) -> String {
 
     if bm.remaining() > 0 && bm.remaining() < per_line {
         let expect_hex_len = parts_len * (2 * group_count + 1);
-        let ordinal = format!("{:#06x}: ", line_counts * per_line);
+        let ordinal = format!("{:#06x}: ", line_counts * per_line).magenta().to_string();
         let mut ascii_vec = Vec::with_capacity(per_line);
         let mut hex_content = String::with_capacity(expect_hex_len);
 

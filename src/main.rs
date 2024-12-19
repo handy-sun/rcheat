@@ -6,9 +6,9 @@ mod lua;
 mod macros;
 mod qpid;
 
-use ansi_term::Color::Red;
 use clap::Parser;
 use nix::libc::pid_t;
+use owo_colors::OwoColorize;
 use shadow_rs::shadow;
 
 use ctrl::further_parse;
@@ -46,7 +46,7 @@ fn run_main(arg: Args) -> AnyError {
         let commit_hash_with_clean_color: &str = if build::GIT_CLEAN {
             build::SHORT_COMMIT
         } else {
-            &Red.paint(build::SHORT_COMMIT)
+            &build::SHORT_COMMIT.red().to_string()
         };
         println!(
             "{} {} ({} {})",
