@@ -9,7 +9,7 @@ mod qpid;
 use clap::Parser;
 use nix::libc::pid_t;
 use owo_colors::OwoColorize;
-use shadow_rs::shadow;
+// use shadow_rs::shadow;
 
 use ctrl::further_parse;
 
@@ -40,21 +40,23 @@ pub struct Args {
 }
 
 fn run_main(arg: Args) -> AnyError {
-    shadow!(build);
-
+    // shadow!(build);
     if arg.version {
-        let commit_hash_with_clean_color: &str = if build::GIT_CLEAN {
-            build::SHORT_COMMIT
+        // let short_commit = ;
+        let build_time = option_env!("RCHEAT_BUILD_TIME").unwrap_or("");
+        let is_clean_commit = option_env!("RCHEAT_GIT_IS_CLEAN_COMMIT").is_some();
+        let version = option_env!("RCHEAT_GIT_TAG_VERSION").unwrap_or("0.0.0");
+
+        // If there are any pending changes, show the hash in red
+        let hash_with_color = if is_clean_commit {
+            option_env!("RCHEAT_BUILD_GIT_HASH").unwrap_or("").to_string()
         } else {
-            &build::SHORT_COMMIT.red().to_string()
+            option_env!("RCHEAT_BUILD_GIT_HASH")
+                .unwrap_or("")
+                .red()
+                .to_string()
         };
-        println!(
-            "{} {} ({} {})",
-            build::PROJECT_NAME,
-            build::PKG_VERSION,
-            commit_hash_with_clean_color,
-            build::BUILD_TIME
-        );
+        println!("rcheat {} ({} {})", version, hash_with_color, build_time);
         return Ok(());
     }
 
