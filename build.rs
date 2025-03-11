@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Record the build time as an environment variable `RCHEAT_BUILD_TIME`.
 fn set_build_time() {
@@ -29,10 +29,26 @@ fn set_git_revision_hash() {
 /// Make the latest software version according to git tag to the build as the
 /// environment variable `RCHEAT_GIT_TAG_VERSION`.
 fn set_git_tag_version() {
-    let args = &["describe", "--tags", "--abbrev=0"];
-    let Ok(output) = Command::new("git").args(args).output() else {
-        return;
+    // First command use spawn()
+    let git_describe_cmd = Command::new("git")
+        .args(&["describe", "--tags", "--abbrev=0"])
+        .stdout(Stdio::piped())
+        .spawn();
+
+    let latest_tag_name = match git_describe_cmd {
+        Ok(child) => child,
+        Err(_) => return,
     };
+
+    // Second command get pipe output
+    let grep_output = Command::new("grep")
+        .arg("-oE")
+        .arg("[^v]*$")
+        .stdin(Stdio::from(latest_tag_name.stdout.unwrap()))
+        .output();
+
+    // Handle the final output
+    let Ok(output) = grep_output else { return };
     let tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if tag.is_empty() {
         return;

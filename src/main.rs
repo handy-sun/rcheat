@@ -9,7 +9,6 @@ mod qpid;
 use clap::Parser;
 use nix::libc::pid_t;
 use owo_colors::OwoColorize;
-// use shadow_rs::shadow;
 
 use ctrl::further_parse;
 
@@ -45,7 +44,7 @@ fn run_main(arg: Args) -> AnyError {
         // let short_commit = ;
         let build_time = option_env!("RCHEAT_BUILD_TIME").unwrap_or("");
         let is_clean_commit = option_env!("RCHEAT_GIT_IS_CLEAN_COMMIT").is_some();
-        let version = option_env!("RCHEAT_GIT_TAG_VERSION").unwrap_or("0.0.0");
+        let version = option_env!("RCHEAT_GIT_TAG_VERSION").unwrap_or("NULL");
 
         // If there are any pending changes, show the hash in red
         let hash_with_color = if is_clean_commit {
