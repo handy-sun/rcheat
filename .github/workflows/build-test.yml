@@ -19,14 +19,14 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - {os: ubuntu-24.04, target: x86_64-unknown-linux-gnu}
-          - {os: ubuntu-24.04, target: x86_64-unknown-linux-musl, use-cross: true}
-          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, use-cross: false}
-          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, use-cross: false}
-          - {os: ubuntu-24.04-arm, target: arm-unknown-linux-gnueabihf, use-cross: false}
-          - {os: ubuntu-24.04-arm, target: arm-unknown-linux-musleabihf, use-cross: false}
+          - {os: ubuntu-latest, target: x86_64-unknown-linux-gnu}
+          - {os: ubuntu-latest, target: x86_64-unknown-linux-musl, use-cross: true}
+          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, use-cross: true}
+          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, use-cross: false} ## This target is tested without cross
+          - {os: ubuntu-24.04-arm, target: arm-unknown-linux-gnueabihf, use-cross: true}
+          - {os: ubuntu-24.04-arm, target: arm-unknown-linux-musleabihf, use-cross: true}
           - {os: macos-latest, target: aarch64-apple-darwin}
-          - {os: macos-13, target: x86_64-apple-darwin}
+          - {os: macos-26-intel, target: x86_64-apple-darwin}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -86,7 +86,7 @@ jobs:
         run: |
           bin_name="$(perl -nle 'if (/^\[\[bin\]\]/) { $found = 1; next; } if ($found && /^name\s*=\s*"([^"]+)"/) { print $1; $found = 0; }' Cargo.toml)"
           bin_path="target/${{ matrix.job.target }}/release/${bin_name}"
-          echo ${bin_path}
+          echo ${bin_path} >> $GITHUB_OUTPUT
 
           if [[ -e "${bin_path}" ]]; then 
             if command -v ldd &>/dev/null; then
@@ -98,6 +98,6 @@ jobs:
 
             echo
             ls --color=auto -lF ${bin_path} | grep --color=auto -e '*$' || true
-            echo
+            echo >> $GITHUB_OUTPUT
             file ${bin_path} || true
           fi
