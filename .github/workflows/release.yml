@@ -27,11 +27,11 @@ jobs:
           - {os: ubuntu-22.04, target: x86_64-unknown-linux-gnu}
           - {os: ubuntu-22.04, target: x86_64-unknown-linux-musl, use-cross: true}
           - {os: ubuntu-22.04, target: aarch64-unknown-linux-musl, use-cross: true}
-          - {os: ubuntu-22.04, target: aarch64-unknown-linux-gnu, use-cross: true}
+          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, use-cross: false} ## This target is tested without cross
           - {os: ubuntu-22.04, target: arm-unknown-linux-gnueabihf, use-cross: true}
           - {os: ubuntu-22.04, target: arm-unknown-linux-musleabihf, use-cross: true}
           - {os: macos-latest, target: aarch64-apple-darwin}
-          - {os: macos-13, target: x86_64-apple-darwin}
+          - {os: macos-26-intel, target: x86_64-apple-darwin}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -63,13 +63,13 @@ jobs:
         shell: bash
         run: |
           gcc --version || true
-          echo
+
           if command -v ldd &>/dev/null; then
             ldd --version || true
           elif command -v otool &>/dev/null; then
             otool --version || true
           fi
-          echo
+
           rustup -V
           rustup toolchain list
           rustup default
@@ -125,9 +125,9 @@ jobs:
           OS="$(uname -s)"
 
           if [ "$OS" == "Linux" ]; then
-            echo "SUM_NAME=$(sha256sum ${PKG_PATH})"
+            echo "SUM_NAME=$(sha256sum ${PKG_PATH})" >> $GITHUB_ENV
           elif [ "$OS" == "Darwin" ]; then
-            echo "SUM_NAME=$(shasum -a 256 ${PKG_PATH})"
+            echo "SUM_NAME=$(shasum -a 256 ${PKG_PATH})" >> $GITHUB_ENV
           fi
 
       - name: "Artifact upload: tarball"
