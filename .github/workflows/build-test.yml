@@ -99,6 +99,6 @@ jobs:
 
             echo
             ls --color=auto -lF ${bin_path} | grep --color=auto -e '*$' || true
-            echo "\n" >> $GITHUB_OUTPUT
+            # echo -n "\n" >> $GITHUB_OUTPUT
             file ${bin_path} || true
           fi
