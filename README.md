@@ -21,7 +21,8 @@
 		* 1.2.1. [Dependencies](#Dependencies)
 		* 1.2.2. [Building](#Building)
 * 2. [Simple Example](#SimpleExample)
-* 3. [Todo](#Todo)
+* 3. [Lua Scripting](#lua-scripting)
+* 4. [Todo](#Todo)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -153,7 +154,82 @@ After version `0.1.3`, option `-n/--name` can query pid by process name
 sudo rcheat -n onlyc -k sig_arr
 ```
 
-##  3. <a name='Todo'></a>Todo
+##  3. Lua Scripting
+
+Since version `0.2.0`, rcheat supports using Lua scripts to define custom binary struct parsing and formatted table output. Use the `-f lua` option to enable it.
+
+### How It Works
+
+1. Place Lua script files in `/etc/rcheat/lua/`
+2. Run `rcheat` with `-f lua`:
+
+```sh
+sudo rcheat -n onlyc -k structure -f lua
+```
+
+3. rcheat loads `core.lua` (built-in), then loads all `.lua` files from the script directory
+4. Matches the variable name against `Structure.match_table` to find the alias
+5. Calls `Structure:new_<alias>(bytes)` to parse the raw bytes into a table
+6. Outputs a formatted table
+
+### Writing a Lua Script
+
+Every script must define a global `Structure` table with:
+
+- `match_table` — maps variable name patterns (Lua string.find) to aliases
+- `new_<alias>(bytes)` — constructor that parses raw bytes and returns an instance
+
+Column definition format:
+
+| Field | Description | Examples |
+|-------|-------------|----------|
+| `name` | Column header name | `'id'`, `'health'` |
+| `size` | Number of bytes | `1`, `2`, `4`, `8` |
+| `fmt` | [string.unpack](https://www.lua.org/manual/5.4/manual.html#6.4.2) format | `'i'` signed, `'I'` unsigned, `'f'` float, `'s'` string, `'c'` char, `nil` auto signed int |
+
+When `fmt` is `'i'`, `'I'`, `'s'`, or `'c'`, the size is appended automatically (e.g. `i4`, `I1`). When `fmt` is `nil`, it defaults to `i<size>` (signed integer). For `'f'`, the size is determined by the format itself (4 bytes for `f`, 8 for `d`).
+
+### Example
+
+`/etc/rcheat/lua/example.lua`:
+
+```lua
+Structure = {}
+Structure.__index = Structure
+
+-- Match variable names containing 'pcmStateList' to alias 'psl'
+Structure.match_table = {
+    ['pcmStateList'] = 'psl',
+}
+
+-- Constructor: parse bytes into a table with columns {id, stared, act}
+function Structure:new_psl(bytes)
+    self.psl_col = {
+        { name = 'id',     size = 4, fmt = 'i' },  -- signed 32-bit int
+        { name = 'stared', size = 1, fmt = 'I' },  -- unsigned 8-bit int
+        { name = 'act',    size = 4, fmt = 'f' },  -- 32-bit float
+    }
+
+    return setmetatable({ psl = SetupTableData(bytes, self.psl_col) }, Structure)
+end
+```
+
+Output (rcheat will format it as an aligned table):
+
+```
+╭─────┬────┬────────╮
+│ (i) │ id │ stared │   act │
+├─────┼────┼────────┤───────┤
+│   0 │  1 │      0 │  3.50 │
+│   1 │  2 │      1 │  7.25 │
+╰─────┴────┴────────┴───────╯
+```
+
+### Built-in Functions (core.lua)
+
+`SetupTableData(bytes, tab_list)` — Iterates over raw bytes according to the column definitions and returns a two-dimensional table. Each row is an array of `{ name, size, data }` entries. The function loops over the byte array, slicing it by each column's `size` and unpacking with `string.unpack` using the specified `fmt`.
+
+##  4. <a name='Todo'></a>Todo
 
 *The development plan of the project and the functions to be implemented*
 
@@ -167,3 +243,4 @@ sudo rcheat -n onlyc -k sig_arr
 - [x] regex replace String.contain
 - [x] if match more than 1 entry name, ask for which one to select
 - [x] demangle symbols
+

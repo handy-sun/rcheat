@@ -19,7 +19,8 @@
 		* 1.2.1. [依赖项](#-1)
 		* 1.2.2. [构建](#-1)
 * 2. [简单示例](#-1)
-* 3. [Todo](#Todo)
+* 3. [Lua 脚本](#3-lua-脚本)
+* 4. [Todo](#Todo)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -152,7 +153,82 @@ sudo rcheat -p 13725 -k sig_arr
 sudo rcheat -n onlyc -k sig_arr
 ```
 
-##  3. <a name='Todo'></a>Todo
+##  3. Lua 脚本
+
+自 `0.2.0` 版本起，rcheat 支持使用 Lua 脚本自定义二进制结构体解析和格式化表格输出。使用 `-f lua` 选项启用。
+
+### 工作流程
+
+1. 将 Lua 脚本文件放置在 `/etc/rcheat/lua/` 目录下
+2. 使用 `-f lua` 运行 `rcheat`：
+
+```sh
+sudo rcheat -n onlyc -k structure -f lua
+```
+
+3. rcheat 加载内建的 `core.lua`，然后加载脚本目录下的所有 `.lua` 文件
+4. 将变量名与 `Structure.match_table` 匹配，找到对应的别名
+5. 调用 `Structure:new_<alias>(bytes)` 将原始字节解析为表格
+6. 输出格式化的表格
+
+### 编写 Lua 脚本
+
+每个脚本必须定义一个全局 `Structure` 表，包含：
+
+- `match_table` — 将变量名模式（Lua string.find）映射到别名
+- `new_<alias>(bytes)` — 构造函数，解析原始字节并返回实例
+
+列定义格式：
+
+| 字段 | 说明 | 示例 |
+|------|------|------|
+| `name` | 列标题名 | `'id'`, `'health'` |
+| `size` | 字节数 | `1`, `2`, `4`, `8` |
+| `fmt` | [string.unpack](https://www.lua.org/manual/5.4/manual.html#6.4.2) 格式 | `'i'` 有符号, `'I'` 无符号, `'f'` 浮点, `'s'` 字符串, `'c'` 字符, `nil` 自动有符号整数 |
+
+当 `fmt` 为 `'i'`、`'I'`、`'s'` 或 `'c'` 时，size 会自动附加（如 `i4`、`I1`）。当 `fmt` 为 `nil` 时，默认为 `i<size>`（有符号整数）。对于 `'f'`，大小由格式本身决定（`f` 为 4 字节，`d` 为 8 字节）。
+
+### 示例
+
+`/etc/rcheat/lua/example.lua`：
+
+```lua
+Structure = {}
+Structure.__index = Structure
+
+-- 匹配变量名中包含 'pcmStateList' 的变量，别名为 'psl'
+Structure.match_table = {
+    ['pcmStateList'] = 'psl',
+}
+
+-- 构造函数：将字节解析为包含 {id, stared, act} 列的表格
+function Structure:new_psl(bytes)
+    self.psl_col = {
+        { name = 'id',     size = 4, fmt = 'i' },  -- 有符号 32 位整数
+        { name = 'stared', size = 1, fmt = 'I' },  -- 无符号 8 位整数
+        { name = 'act',    size = 4, fmt = 'f' },  -- 32 位浮点数
+    }
+
+    return setmetatable({ psl = SetupTableData(bytes, self.psl_col) }, Structure)
+end
+```
+
+输出（rcheat 会将其格式化为对齐的表格）：
+
+```
+╭─────┬────┬────────╮
+│ (i) │ id │ stared │   act │
+├─────┼────┼────────┤───────┤
+│   0 │  1 │      0 │  3.50 │
+│   1 │  2 │      1 │  7.25 │
+╰─────┴────┴────────┴───────╯
+```
+
+### 内建函数 (core.lua)
+
+`SetupTableData(bytes, tab_list)` — 根据列定义遍历原始字节，返回二维表格。每行是一个 `{ name, size, data }` 条目数组。函数按每列的 `size` 切割字节数组，并使用指定的 `fmt` 通过 `string.unpack` 解包数据。
+
+##  4. <a name='Todo'></a>Todo
 
 *项目的发展规划及拟实现的功能*
 
@@ -166,56 +242,4 @@ sudo rcheat -n onlyc -k sig_arr
 - [x] 正则表达式替换 String.contain
 - [x] 如果匹配超过 1 个条目名称，则询问选择哪一个
 - [x] 分解符号
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
