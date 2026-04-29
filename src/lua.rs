@@ -61,7 +61,7 @@ fn print_two_dimensional_table(tab: &LuaTable, tab_col: &LuaTable) -> mlua::Resu
     Ok(builder
         .build()
         .with((Alignment::right(), Style::rounded()))
-        .modify(Columns::single(0), Format::content(|s| s.blue().to_string()))
+        .modify(Columns::one(0), Format::content(|s| s.blue().to_string()))
         .to_string())
 }
 

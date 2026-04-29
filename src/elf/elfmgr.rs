@@ -82,7 +82,7 @@ impl<'a> ElfMgr<'a> {
         self.elf.header.e_type == header::ET_DYN
     }
 
-    pub fn select_sym_entry(&self, keyword: &String) -> Result<SymEntry, Error> {
+    pub fn select_sym_entry(&self, keyword: &String) -> Result<SymEntry<'_>, Error> {
         let start = Instant::now();
         let syms = self.elf.syms.to_vec();
         if syms.is_empty() {

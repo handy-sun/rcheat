@@ -23,22 +23,22 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "^1.0"
-bytes = "^1.9"
-goblin = "^0.9"
+bytes = "^1.11"
+goblin = "^0.10"
 symbolic-common = "^12"
-owo-colors = "^4"
-once_cell = "1.19.0"
+owo-colors = "^4.3"
+once_cell = "^1.21"
 walkdir = "2.5.0"
 symbolic-demangle = { version = "^12", default-features = false, features = ["cpp", "rust"] }
-regex = { version = "^1.10", default-features = false, features = ["std", "unicode-perl"]}
-clap = { version = "^4.5", default-features = false, features = ["std", "derive", "help", "usage"] }
+regex = { version = "^1.12", default-features = false, features = ["std", "unicode-perl"] }
+clap = { version = "^4.6", default-features = false, features = ["std", "derive", "help", "usage"] }
 gimli = { version = "^0.31", features = ["read"] }
 object = { version = "^0.36", features = ["read"] }
-mlua = { version = "^0.10", features = ["lua54", "vendored"] }
-tabled = { version = "^0.17", features = ["ansi"] }
+mlua = { version = "^0.11", features = ["lua54", "vendored"] }
+tabled = { version = "^0.20", features = ["ansi"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29.0", default-features = false, features = ["ptrace", "fs"] }
+nix = { version = "^0.31", default-features = false, features = ["ptrace", "fs"] }
 
 [package.metadata.generate-rpm]
 assets = [
