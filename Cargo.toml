@@ -1,6 +1,6 @@
 [package]
 name = "rcheat"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["handy-sun <handy-sun@foxmail.com>"]
 homepage = "https://github.com/handy-sun/rcheat"
