@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# pre-push hook: check version consistency before pushing tags
+# Ensures Cargo.toml and Cargo.lock versions match the tag being pushed
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Read refs from stdin
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Only check tag pushes
+    if [[ "$remote_ref" != refs/tags/* ]]; then
+        continue
+    fi
+
+    # Extract tag name and version (remove 'v' prefix)
+    tag_name="${remote_ref#refs/tags/}"
+    tag_version="${tag_name#v}"
+
+    # Validate version format (semver-like: X.Y.Z)
+    if [[ ! "$tag_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "${YELLOW}Warning: Tag '$tag_name' doesn't follow semver format (vX.Y.Z), skipping version check${NC}"
+        continue
+    fi
+
+    echo "Checking version consistency for tag: $tag_name (version: $tag_version)"
+
+    errors=0
+
+    # Check Cargo.toml version
+    if [ -f "Cargo.toml" ]; then
+        cargo_version=$(grep -E '^version\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"' Cargo.toml | head -1 | sed 's/.*"\([0-9.]*\)".*/\1/')
+        if [ -z "$cargo_version" ]; then
+            echo -e "${RED}Error: Could not extract version from Cargo.toml${NC}"
+            errors=$((errors + 1))
+        elif [ "$cargo_version" != "$tag_version" ]; then
+            echo -e "${RED}Error: Cargo.toml version ($cargo_version) does not match tag version ($tag_version)${NC}"
+            errors=$((errors + 1))
+        else
+            echo -e "${GREEN}  ✓ Cargo.toml version: $cargo_version${NC}"
+        fi
+    else
+        echo -e "${RED}Error: Cargo.toml not found${NC}"
+        errors=$((errors + 1))
+    fi
+
+    # Check Cargo.lock version (for the package itself)
+    if [ -f "Cargo.lock" ]; then
+        # Find the rcheat package version in Cargo.lock
+        # Look for the package block that starts with 'name = "rcheat"'
+        lock_version=$(awk '/^\[\[package\]\]/{found=0} /name = "rcheat"/{found=1} found && /^version = /{print; exit}' Cargo.lock | sed 's/.*"\([0-9.]*\)".*/\1/')
+        if [ -z "$lock_version" ]; then
+            echo -e "${RED}Error: Could not extract rcheat version from Cargo.lock${NC}"
+            errors=$((errors + 1))
+        elif [ "$lock_version" != "$tag_version" ]; then
+            echo -e "${RED}Error: Cargo.lock version ($lock_version) does not match tag version ($tag_version)${NC}"
+            echo -e "${YELLOW}  Hint: Run 'cargo update -p rcheat' or 'cargo generate-lockfile' to sync Cargo.lock${NC}"
+            errors=$((errors + 1))
+        else
+            echo -e "${GREEN}  ✓ Cargo.lock version: $lock_version${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Warning: Cargo.lock not found${NC}"
+    fi
+
+    # If there are errors, block the push
+    if [ $errors -gt 0 ]; then
+        echo ""
+        echo -e "${RED}Version check failed! Please update the version in the files above to match $tag_version${NC}"
+        echo -e "${YELLOW}Tip: Update Cargo.toml version, then run 'cargo check' to sync Cargo.lock${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}All version checks passed for $tag_name${NC}"
+done
+
+exit 0
