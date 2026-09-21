@@ -1,4 +1,5 @@
 
+
 # **rcheat**
 
 **English | [简体中文](./README.zh-CN.md)**<br>
@@ -48,7 +49,7 @@ In order to install, just run the following command
 cargo install --force rcheat
 ```
 
-This will install cargo-make in your `~/.cargo/bin`.
+This will install rcheat in your `~/.cargo/bin`.
 Make sure to add `~/.cargo/bin` directory to your `PATH` variable.
 You will have a executable available: *`rcheat`*
 
@@ -243,4 +244,3 @@ Output (rcheat will format it as an aligned table):
 - [x] regex replace String.contain
 - [x] if match more than 1 entry name, ask for which one to select
 - [x] demangle symbols
-
