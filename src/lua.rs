@@ -91,7 +91,7 @@ pub fn dump_with_lua(lua_src_path: &PathBuf, bytes: &[u8], origin_name: &str) ->
     let structure_obj = globals.get::<LuaTable>("Structure")?;
     let match_table: LuaTable = structure_obj.get("match_table")?;
 
-    let alias_lstr: mlua::String = globals.call_function("LoopMatchAlias", (origin_name, match_table))?;
+    let alias_lstr: mlua::LuaString = globals.call_function("LoopMatchAlias", (origin_name, match_table))?;
     let alias = alias_lstr.to_string_lossy();
     if alias.is_empty() {
         return Err(mlua::Error::runtime("Empty alias"));

@@ -34,7 +34,7 @@ regex = { version = "^1.12", default-features = false, features = ["std", "unico
 clap = { version = "^4.6", default-features = false, features = ["std", "derive", "help", "usage"] }
 gimli = { version = "^0.31", features = ["read"] }
 object = { version = "^0.40", features = ["read"] }
-mlua = { version = "^0.11", features = ["lua54", "vendored"] }
+mlua = { version = "^0.12", features = ["lua54", "vendored"] }
 tabled = { version = "^0.22", features = ["ansi"] }
 
 [target.'cfg(unix)'.dependencies]
